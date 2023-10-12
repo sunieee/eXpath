@@ -1,0 +1,176 @@
+# D是嵌入维度（在我们使用的模型中，实体和关系嵌入总是具有相同的维度）；
+# LR是学习率；
+# B是批量大小；
+# Ep是 epoch 的数量；
+# γ是 Pairwise Ranking Loss 中的 margin；
+# N为每个正训练样本产生的负样本数量；
+# Opt是使用的 Optimizer（可以是SGD, 或Adagrad, 或Adam）；
+# Reg是正则化权重；
+# Decay是应用的学习率Decay；
+# ω是卷积核的大小；
+# Drop是训练辍学率：
+# in是输入丢失；
+# h是在隐藏层之后应用的 dropout；
+# feat是特征丢失；
+
+
+MOF-3000:
+  tail_restrain:
+    hasColor: M0->C0
+    hasHabit: M0->H0
+    hasPaper: M0->P0
+    hasJournal: M0->J0
+    hasAuthor: M0->A0
+    hasKernel: M0,P1,B0->K1,K2,K3
+    subKernel: K2,K3->K1,K2
+    hasBond: M0,P1->B0
+    hasSolvent: M0->ref
+    hasLinker: M0->ref
+    hasMetal: M0->ref   # M0 -> P1
+    hasOperation: M0->O0
+    hasMethod: M0->M1
+  TransE:
+    D: 50
+    LR: 0.0002
+    B: 4096
+    Ep: 10
+    gamma: 2
+    N: 5
+    Opt: Adam
+    Reg: 0
+  ComplEx:
+    D: 500
+    LR: 0.1
+    B: 500
+    Ep: 8
+    Opt: Adagrad
+    Reg: 0.05
+  ConvE:
+    D: 200
+    LR: 0.003
+    B: 256
+    Ep: 72
+    Decay: 0.995
+    epsilon: 0.1
+    Drop:
+      in: 0.2
+      h: 0.3
+      feat: 0.2
+
+FB15k-237:
+  TransE:
+    D: 50
+    LR: 0.0004
+    B: 2048
+    Ep: 6
+    gamma: 5
+    N: 15
+    Opt: Adam
+    Reg: 1
+  ComplEx:
+    D: 1000
+    LR: 0.1
+    B: 1000
+    Ep: 14
+    Opt: Adagrad
+    Reg: 0.05
+  ConvE:
+    D: 200
+    LR: 0.003
+    B: 128
+    Ep: 24
+    # REp: 50
+    Decay: 0.995
+    epsilon: 0.1
+    Drop:
+      in: 0.2
+      h: 0.3
+      feat: 0.2
+
+WN18:
+  TransE:
+    D: 50
+    LR: 0.0002
+    B: 2048
+    Ep: 250
+    gamma: 2
+    N: 5
+    Opt: Adam
+    Reg: 0
+  ComplEx:
+    D: 500
+    LR: 0.1
+    B: 1000
+    Ep: 200
+    Opt: Adagrad
+    Reg: 0.05
+  ConvE:
+    D: 200
+    LR: 0.003
+    B: 128
+    Ep: 100
+    Decay: 0.995
+    epsilon: 0.1
+    Drop:
+      in: 0.2
+      h: 0.3
+      feat: 0.2
+
+WN18RR:
+  TransE:
+    D: 50
+    LR: 0.0001
+    B: 2048
+    Ep: 110
+    gamma: 2
+    N: 5
+    Opt: Adam
+    Reg: 50
+  ComplEx:
+    D: 500
+    LR: 0.1
+    B: 100
+    Ep: 20
+    Opt: Adagrad
+    Reg: 0.1
+  ConvE:
+    D: 200
+    LR: 0.003
+    B: 128
+    Ep: 86
+    Decay: 0.995
+    epsilon: 0.1
+    Drop:
+      in: 0.2
+      h: 0.3
+      feat: 0.2
+
+YAGO3-10:
+  TransE:
+    D: 200
+    LR: 0.0001
+    B: 2048
+    Ep: 100
+    gamma: 5
+    N: 5
+    Opt: Adam
+    Reg: 50
+  ComplEx:
+    D: 1000
+    LR: 0.1
+    B: 1000
+    Ep: 50
+    Opt: Adagrad
+    Reg: 0.005
+  ConvE:
+    D: 200
+    LR: 0.003
+    B: 128
+    Ep: 20
+    Decay: 0.995
+    epsilon: 0.1
+    Drop:
+      in: 0.2
+      h: 0.3
+      feat: 0.2
+  
