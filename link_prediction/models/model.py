@@ -70,6 +70,10 @@ class Model(nn.Module):
         where each row corresponds to a sample and contains the integer ids of its head, relation and tail.
     """
 
+    def release(self):
+        self.dataset = None
+        torch.cuda.empty_cache()
+
     def __init__(self, dataset: Dataset):
         nn.Module.__init__(self)
         self.dataset = dataset

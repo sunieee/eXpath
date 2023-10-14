@@ -70,12 +70,12 @@ class BCEOptimizer(Optimizer):
               patience: int = -1,
             type='tail'):
 
-        t = time.time()
+        # t = time.time()
         all_training_samples = np.vstack((train_samples, self.dataset.invert_samples(train_samples)))
         er_vocab = self.extract_er_vocab(all_training_samples)
         er_vocab_pairs = list(er_vocab.keys())
         er_vocab_pairs.sort(key=lambda x: x[1]) # 对样例按照relation排序！
-        print('prepare for train time:', time.time()-t)
+        # print('prepare for train time:', time.time()-t)
 
         self.model.cuda()
         best_metric = None

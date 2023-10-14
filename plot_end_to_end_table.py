@@ -133,7 +133,7 @@ for system in systems:
             print(f"Processing {system} {model} {dataset}")
             
             end_to_end_output_filename = "_".join(
-                [system, 'necessary', model.lower(), dataset.lower().replace("-", "")]) + ".csv"
+                [system, model.lower(), dataset.lower().replace("-", "")]) + ".csv"
             end_to_end_output_filepath = os.path.join('experiments', end_to_end_output_filename)
             
             # 如果有，则用新的，否则用旧的

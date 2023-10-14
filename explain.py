@@ -188,6 +188,8 @@ def explain_sample(prediction):
     # 过滤掉长度为1的路径，这种路径是一种简单的推导，不能作为解释
     # 使用kelpie top20 facts过滤路径
     all_paths = [p for p in all_paths if len(p) > 1]
+    # 打乱路径顺序
+    random.shuffle(all_paths)
 
     facts = eval(kelpie_df.loc[str(prediction), 'facts'])
     print('kelpie facts:', facts)
@@ -276,10 +278,9 @@ def explain_sample(prediction):
     ech('Calculate path relevance')
     while not path_generator.finished():
         pair = path_generator.generate()
+    
     path_generator.close()
-
-    # del tail_generator
-    del path_generator
+    path_generator.release()
 
 def explain_one(func, pbar=None):
     for sample in testing_samples:

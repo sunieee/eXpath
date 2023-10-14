@@ -135,6 +135,8 @@ parser.add_argument('--perspective', type=str, default='',
 
 parser.add_argument('--top_n_explanation', type=int, default=1)
 
+parser.add_argument('--max_explained', type=int, default=1000)
+
 # parser.add_argument('--sort', dest='sort', default=False, action='store_true',
 #                     help="whether sort the dataset")
 
@@ -177,7 +179,7 @@ epoches = cfg['Ep'] # // 2
 hyperparameters = {
     DIMENSION: cfg['D'],
     EPOCHS: epoches,
-    RETRAIN_EPOCHS: cfg['REp'] if 'REp' in cfg else epoches,
+    RETRAIN_EPOCHS: cfg['REp'] if 'REp' in cfg else int(epoches * 0.8),
     BATCH_SIZE: cfg['B'],
     LEARNING_RATE: cfg['LR']
 }
@@ -327,8 +329,7 @@ def extract_performances_on_embeddings(trainable_entities, embedding: torch.Tens
         ret = new_model.calculate_grad(prediction)
     ret = extract_performances(new_model, prediction)
 
-    del new_model
-    torch.cuda.empty_cache()
+    new_model.release()
     return ret
 
 
@@ -417,7 +418,6 @@ class Explanation:
     """
     calculate removel relevance using the same process as kelpie engine
     """
-    _original_model_results = {}
     _base_pt_model_results = {}
     df = pd.DataFrame()
 
@@ -428,12 +428,33 @@ class Explanation:
     @staticmethod
     def empty_cache():
         for dataset in Explanation._kelpie_dataset_cache.values():
-            del dataset
-        for tensor in Explanation._kelpie_init_tensor_cache.values():
-            del tensor
+            dataset.release()
         Explanation._kelpie_dataset_cache = OrderedDict()
         Explanation._kelpie_init_tensor_cache = {}
         torch.cuda.empty_cache()
+
+    def release(self):
+        self.kelpie_dataset.release()
+        self.kelpie_prediction = None
+        self.kelpie_entity_id = None
+        self.kelpie_init_tensor = None
+        self.kelpie_dataset = None
+        self.prediction = None
+        self.samples_to_remove = None
+        self.trainable_entities = None
+        self.original_entity_id = None
+        self.identifier = None
+        self.kelpie_init_tensor = None
+        self.kelpie_dataset = None
+        self.kelpie_prediction = None
+        self.kelpie_entity_id = None
+        self.base_metric = None
+        self.pt_metric = None
+        self.rank_worsening = None
+        self.score_worsening = None
+        self.relevance = None
+        self.execution_time = None
+        self.ret = None
 
     def __init__(self, 
                  prediction: Tuple[Any, Any, Any],
@@ -533,8 +554,7 @@ class Explanation:
         print(f"* base post train training time: {time.time() - t}, #sample: {len(self.kelpie_dataset.kelpie_train_samples)}")
         self._base_pt_model_results[self.identifier] = self.extract_performance_with_embedding(kelpie_model, calculate_grad=True)
         
-        del kelpie_model
-        torch.cuda.empty_cache()
+        kelpie_model.release()
         return self._base_pt_model_results[self.identifier]
 
 
@@ -554,8 +574,7 @@ class Explanation:
         self.kelpie_dataset.undo_last_training_samples_removal()
         ret = self.extract_performance_with_embedding(kelpie_model)
 
-        del kelpie_model
-        torch.cuda.empty_cache()
+        kelpie_model.release()
         return ret
     
 
@@ -572,8 +591,7 @@ class Explanation:
                 self._kelpie_dataset_cache.popitem(last=False)
                 oldest_key, oldest_value = self._kelpie_dataset_cache.popitem(last=False)
                 # release resources associated with oldest_value
-                del oldest_value
-                torch.cuda.empty_cache()
+                oldest_value.release()
 
         return self._kelpie_dataset_cache[self.identifier]
     
@@ -630,8 +648,8 @@ class Generator:
         if self.empty():
             print('queue is empty, finish')
             return True
-        if len(self.windows) < self.window_size * 4:
-            print(f'window size: {len(self.windows)} < {self.window_size * 4}, continue')
+        if len(self.windows) < self.window_size * 5:
+            print(f'window size: {len(self.windows)} < {self.window_size * 5}, continue')
             return False
         
         relu_windows = [max(0, x) for x in self.windows[-self.window_size:]]
@@ -691,9 +709,9 @@ def filter_samples(all_samples, concerning_entities):
 class OneHopGenerator(Generator):
     NoSplitThresh = 30
 
-    def __del__(self):
+    def release(self):
         for exp in self.explanations.values():
-            del exp
+            exp.release()
         torch.cuda.empty_cache()
 
     df = pd.DataFrame()
@@ -812,10 +830,6 @@ class OneHopGenerator(Generator):
         """return one top explanation
         """
         print('*' * 10 + f'{self.perspective} generate (len: {len(self)})')
-
-        if self.finished():
-            print(f'No more neighbors, finished')
-            return None
         
         neighbor = max(self.upbound_dic, key=self.upbound_dic.get)
         self.last_upbound = self.upbound_dic.pop(neighbor)
@@ -900,11 +914,16 @@ class OneHopGenerator(Generator):
 class PathGenerator(Generator):
     df = pd.DataFrame()
 
-    def __del__(self):
+    def release(self):
         for exp in self.head_explanations.values():
-            del exp
+            exp.release()
         for exp in self.tail_explanations.values():
-            del exp
+            exp.release()
+        self.head_explanations = {}
+        self.tail_explanations = {}
+        self.head_hyperpaths = defaultdict(set)
+        self.tail_hyperpaths = defaultdict(set)
+
         torch.cuda.empty_cache()
 
     def __init__(self, prediction, hyperpaths, available_samples=None) -> None:
@@ -918,7 +937,6 @@ class PathGenerator(Generator):
             self.head_hyperpaths[hyperpath[1]].add(hyperpath)
             self.tail_hyperpaths[hyperpath[-2]].add(hyperpath)
 
-        self.approx_rel_dic = {}
 
     def renew_head(self, head, explanation):
         if head in self.head_explanations:
@@ -1000,11 +1018,7 @@ class PathGenerator(Generator):
         return one top explanation
         You should examine whether the Generator is empty before calling this function
         """
-        print('*' * 10 + f'path generate (len: {len(self)})')
-
-        if self.finished():
-            print(f'No more hyperpath, finished')
-            return None
+        print(f'* path generate (len: {len(self)})')
         
         hyperpath = max(self.upbound_dic, key=self.upbound_dic.get)
         self.last_upbound = self.upbound_dic.pop(hyperpath)
@@ -1041,7 +1055,6 @@ class PathGenerator(Generator):
         # approx_embedding = torch.stack([head_exp.pt_embeddings[0], tail_exp.pt_embeddings[-1]])
         # approx_score = extract_performances_on_embeddings([head,tail], approx_embedding, self.prediction)[0]
         # print(f'approx_score: {approx_score}, base_score: {head_exp.base_score}/{tail_exp.base_score}')
-        # self.approx_rel_dic[hyperpath] = (head_exp.base_score + tail_exp.base_score)/2 - approx_score
 
         update_df(self.df, {
             'prediction': self.prediction,
@@ -1051,7 +1064,6 @@ class PathGenerator(Generator):
             'head_rel': head_exp.relevance,
             'tail_rel': tail_exp.relevance,
             'triples': head_exp.samples_to_remove + tail_exp.samples_to_remove,
-            # 'approx_rel': self.approx_rel_dic[hyperpath],
         }, 'hyperpath.csv')
 
         ##########################################################
@@ -1080,12 +1092,6 @@ class PathGenerator(Generator):
         ret = sorted(ret.items(), key=lambda x: x[1]['relevance'], reverse=True)
         return ret
 
-path_dic = {}
-cnt_df = pd.DataFrame()
-valid_hops_df = pd.DataFrame()
-valid_exp_df = pd.DataFrame()
-exp_info_df = pd.DataFrame()
-hop_df = pd.DataFrame()
 relevance_threshold = args.relevance_threshold
 
 def triple2str(triple):

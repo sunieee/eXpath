@@ -24,15 +24,33 @@ explain() {
         # 将设备字符串按逗号分割为数组
         IFS=',' read -ra devices <<< "$device"
         num_devices=${#devices[@]}
-        pids=()
 
         # 计算每个设备分配到的进程数
         process=$((process * num_devices))
         echo "all process: $process"
         
+        pids=()
         for ((i = 0; i < process; i++)); do
                 output_folder=${dirname}/$((i + 1))
+                echo $output_folder
+                mkdir -p $output_folder
+                current_device=${devices[$((i % num_devices))]}
+                CUDA_VISIBLE_DEVICES=$current_device python $explain_file --max_explained 50 --dataset $dataset --method $method --system xrule \
+                        --run 00011 --relevance_method score --output_folder $output_folder --process $process --split $((i + 1))  \
+                        2>&1 > $output_folder/output.log &
+                pids[${#pids[@]}]=$!
+                sleep 0.5
+        done
+        for pid in ${pids[*]}; do
+                wait $pid
+        done
+        # CUDA_VISIBLE_DEVICES=$device python explain.py --dataset $dataset --method $method --system xrule \
+        #         --run $run --relevance_method score --output_folder $output_folder # > $output_folder/output.log
 
+        # 断点续行
+        pids=()
+        for ((i = 0; i < process; i++)); do
+                output_folder=${dirname}/$((i + 1))
                 echo $output_folder
                 mkdir -p $output_folder
                 current_device=${devices[$((i % num_devices))]}
@@ -42,13 +60,9 @@ explain() {
                 pids[${#pids[@]}]=$!
                 sleep 0.5
         done
-
-        # Wait for all background processes to complete
         for pid in ${pids[*]}; do
                 wait $pid
         done
-        # CUDA_VISIBLE_DEVICES=$device python explain.py --dataset $dataset --method $method --system xrule \
-        #         --run $run --relevance_method score --output_folder $output_folder # > $output_folder/output.log
 }
 
 

@@ -18,6 +18,36 @@ class XruleDataset(Dataset):
                                (e.g. some training samples may have been removed, or added).
     """
 
+    def release(self):
+        """
+            This method releases the memory allocated by the KelpieDataset.
+            It is called when the KelpieDataset is no longer needed.
+        """
+        self.original_train_samples = None
+        self.original_valid_samples = None
+        self.original_test_samples = None
+        self.kelpie_train_samples = None
+        self.kelpie_valid_samples = None
+        self.kelpie_test_samples = None
+        self.kelpie_train_sample_2_index = None
+        self.kelpie_train_samples_copy = None
+        self.last_added_samples = None
+        self.last_added_samples_number = None
+        self.last_filter_additions = None
+        self.last_added_kelpie_samples = None
+        self.last_removed_samples = None
+        self.last_removed_samples_number = None
+        self.last_filter_removals = None
+        self.last_removed_kelpie_samples = None
+        self.to_filter = None
+        self.train_to_filter = None
+        self.entity_name_2_id = None
+        self.entity_id_2_name = None
+        self.relation_name_2_id = None
+        self.relation_id_2_name = None
+        self.rid2target = None
+        self.g = None
+
     def __init__(self,
                  dataset: Dataset,
                  original_entity_id,
@@ -49,14 +79,15 @@ class XruleDataset(Dataset):
         # copy relevant data structures
         self.to_filter = copy.deepcopy(dataset.to_filter)
         self.train_to_filter = copy.deepcopy(dataset.train_to_filter)
-        self.entity_name_2_id = copy.deepcopy(dataset.entity_name_2_id)
-        self.entity_id_2_name = copy.deepcopy(dataset.entity_id_2_name)
-        self.relation_name_2_id = copy.deepcopy(dataset.relation_name_2_id)
-        self.relation_id_2_name = copy.deepcopy(dataset.relation_id_2_name)
-        self.rid2target = copy.deepcopy(dataset.rid2target)
-        if dataset.g:
-            # https://stackoverflow.com/questions/60310123/why-is-graph-copy-slower-than-copy-deepcopygraph-in-networkx
-            self.g = copy.deepcopy(dataset.g)
+        
+        # self.entity_name_2_id = copy.deepcopy(dataset.entity_name_2_id)
+        # self.entity_id_2_name = copy.deepcopy(dataset.entity_id_2_name)
+        # self.relation_name_2_id = copy.deepcopy(dataset.relation_name_2_id)
+        # self.relation_id_2_name = copy.deepcopy(dataset.relation_id_2_name)
+        # self.rid2target = copy.deepcopy(dataset.rid2target)
+        # if dataset.g:
+        #     # https://stackoverflow.com/questions/60310123/why-is-graph-copy-slower-than-copy-deepcopygraph-in-networkx
+        #     self.g = copy.deepcopy(dataset.g)
 
         # add the kelpie entity
         self.original_entity_id = original_entity_id
@@ -68,11 +99,11 @@ class XruleDataset(Dataset):
         self.kelpie_test_samples = []
 
         for ix, original_entity_id in enumerate(self.original_entity_id):
-            entity_name = self.entity_id_2_name[original_entity_id]
-            kelpie_name = "kelpie_" + entity_name
+            # entity_name = self.dataset.entity_id_2_name[original_entity_id]
+            # kelpie_name = "kelpie_" + entity_name
             kelpie_id = dataset.num_entities + ix
-            self.entity_name_2_id[kelpie_name] = kelpie_id
-            self.entity_id_2_name[kelpie_id] = kelpie_name
+            # self.entity_name_2_id[kelpie_name] = kelpie_id
+            # self.entity_id_2_name[kelpie_id] = kelpie_name
             self.kelpie_entity_id.append(kelpie_id)
             self.entity2kelpie[original_entity_id] = kelpie_id
 
