@@ -309,6 +309,9 @@ if args.process > 1:
     while explain_one(func, pbar):
         cnt += 1 
         ech(f'Explained {cnt} facts')
+        if len(os.listdir(args.already_explain_path)) >= args.max_explained:
+            ech(f'Explained {args.max_explained} facts, exit')
+            break
     
     pbar.close()
     ech(f'All facts explained, total: {cnt}')

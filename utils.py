@@ -179,7 +179,7 @@ epoches = cfg['Ep'] # // 2
 hyperparameters = {
     DIMENSION: cfg['D'],
     EPOCHS: epoches,
-    RETRAIN_EPOCHS: cfg['REp'] if 'REp' in cfg else int(epoches * 0.8),
+    RETRAIN_EPOCHS: cfg['REp'] if 'REp' in cfg else int(epoches * 0.5),
     BATCH_SIZE: cfg['B'],
     LEARNING_RATE: cfg['LR']
 }

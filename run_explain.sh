@@ -5,6 +5,7 @@
 # embedding_model=CompGCN       ""
 
 export CUDA_LAUNCH_BLOCKING=1
+export 'PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512'
 
 explain_file=explain.py
 
@@ -29,40 +30,30 @@ explain() {
         process=$((process * num_devices))
         echo "all process: $process"
         
-        pids=()
-        for ((i = 0; i < process; i++)); do
-                output_folder=${dirname}/$((i + 1))
-                echo $output_folder
-                mkdir -p $output_folder
-                current_device=${devices[$((i % num_devices))]}
-                CUDA_VISIBLE_DEVICES=$current_device python $explain_file --max_explained 50 --dataset $dataset --method $method --system xrule \
-                        --run 00011 --relevance_method score --output_folder $output_folder --process $process --split $((i + 1))  \
-                        2>&1 > $output_folder/output.log &
-                pids[${#pids[@]}]=$!
-                sleep 0.5
+        base=0
+        for max_explained in 50 100; do
+        # 断点续行（为了防止显存不足）
+                pids=()
+                for ((i = 0; i < process; i++)); do
+                        output_folder=${dirname}/$((base + i + 1))
+                        echo $output_folder
+                        mkdir -p $output_folder
+                        current_device=${devices[$((i % num_devices))]}
+                        CUDA_VISIBLE_DEVICES=$current_device python $explain_file --max_explained 50 --dataset $dataset --method $method --system xrule \
+                                --run 00011 --relevance_method score --output_folder $output_folder --process $process --split $((i + 1))  \
+                                2>&1 > $output_folder/output.log &
+                        pids[${#pids[@]}]=$!
+                        sleep 0.5
+                done
+                for pid in ${pids[*]}; do
+                        wait $pid
+                done
+                base=$((base + process))
         done
-        for pid in ${pids[*]}; do
-                wait $pid
-        done
+        
         # CUDA_VISIBLE_DEVICES=$device python explain.py --dataset $dataset --method $method --system xrule \
         #         --run $run --relevance_method score --output_folder $output_folder # > $output_folder/output.log
 
-        # 断点续行
-        pids=()
-        for ((i = 0; i < process; i++)); do
-                output_folder=${dirname}/$((i + 1))
-                echo $output_folder
-                mkdir -p $output_folder
-                current_device=${devices[$((i % num_devices))]}
-                CUDA_VISIBLE_DEVICES=$current_device python $explain_file --dataset $dataset --method $method --system xrule \
-                        --run 00011 --relevance_method score --output_folder $output_folder --process $process --split $((i + 1))  \
-                        2>&1 > $output_folder/output.log &
-                pids[${#pids[@]}]=$!
-                sleep 0.5
-        done
-        for pid in ${pids[*]}; do
-                wait $pid
-        done
 }
 
 
@@ -71,13 +62,13 @@ explain() {
 # explain FB15k-237 ConvE 0001 1
 # explain MOF-3000 ConvE 0001 2
 
-# for method in ComplEx ConvE; do
-#         for dataset in FB15k-237 WN18RR MOF-3000; do
-#                 explain $dataset $method
-#         done
-# done
+for method in ComplEx ConvE; do
+        for dataset in FB15k-237 WN18RR MOF-3000; do
+                explain $dataset $method
+        done
+done
 
-explain FB15k-237 ComplEx
+# explain FB15k-237 ComplEx
 
 # explain FB15k-237 ComplEx 0,1,2
 

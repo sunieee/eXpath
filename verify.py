@@ -237,7 +237,7 @@ if path_df is not None:
                 ts, relevace, _ = head_to_exp[triples[0]]
                 ts = list(set(ts + triples))
                 # 路径太长没必要加
-                if len(ts) < 8:
+                if len(ts) <= 5:
                     head_to_exp[triples[0]] = (ts, relevace+pre_df.iloc[i]['relevance'], 'xrule')
             else:
                 head_to_exp[triples[0]] = (triples, pre_df.iloc[i]['relevance'], 'xrule')
@@ -385,4 +385,6 @@ for i in range(len(samples_to_explain)):
             'new_rank': numpy.mean(new_ranks)
         }, out_tmp)
     
+
+out_df = out_df[['prediction', 'facts', 'exp', 'exp_length', 'original_score', 'original_rank', 'new_scores', 'new_ranks', 'new_score', 'new_rank']]
 out_df.to_csv(out_file, index=False)
