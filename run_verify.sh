@@ -32,7 +32,7 @@ verify() {
 
     echo "verify $dataset $method $system $device"
     
-    for top_n in 1 5; do
+    for top_n in 1 3 5; do
         CUDA_VISIBLE_DEVICES=$device python verify.py --output_folder $output_folder \
         --dataset $dataset --method $method --process 10 --verify \
         --system $system  --top_n_explanation $top_n \
@@ -74,8 +74,8 @@ verify_all_xrule() {
     pids=()
 
     verify $dataset $method xrule 0
-    verify $dataset $method k1+xrule 1
-    verify $dataset $method kelpie+xrule 2
+    # verify $dataset $method k1+xrule 1
+    # verify $dataset $method kelpie+xrule 2
 
     # Wait for all background processes to complete
     for pid in ${pids[*]}; do
@@ -101,7 +101,11 @@ verify_all_xrule() {
 # verify_all_xrule ComplEx FB15k-237
 
 
+pids=()
 verify FB15k-237 ComplEx xrule 0
+for pid in ${pids[*]}; do
+    wait $pid
+done
 # verify WN18RR ComplEx kelpie 0
 # verify FB15k-237 ComplEx kelpie+xrule 0
 # verify FB15k-237 ConvE k1 0

@@ -2,8 +2,8 @@ from typing import Tuple, Any
 from dataset import Dataset
 from relevance_engines.criage_engine import CriageEngine
 from link_prediction.models.model import Model
-from prefilters.criage_prefilter import CriagePreFilter
-from explanation_builders.criage_necessary_builder import CriageNecessaryExplanationBuilder
+from explanation_builders.prefilter import CriagePreFilter
+from explanation_builders.criage_builder import CriageNecessaryExplanationBuilder
 
 class Criage:
     """
@@ -33,7 +33,7 @@ class Criage:
                                    dataset=dataset,
                                    hyperparameters=hyperparameters)
 
-    def explain_necessary(self,
+    def explain(self,
                           sample_to_explain: Tuple[Any, Any, Any],
                           perspective: str,
                           num_promising_samples=-1):

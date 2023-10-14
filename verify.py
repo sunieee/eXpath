@@ -61,13 +61,13 @@ ech('verify all the explanations to see deterorition')
 
 if system.count('+') or system.count('xrule'):
     xrule_folder = args.output_folder.replace(baseline, 'xrule')
-    df = pd.read_csv(f'{xrule_folder}/onehop.csv')
+    # df = pd.read_csv(f'{xrule_folder}/onehop.csv')
     path_df = pd.read_csv(f'{xrule_folder}/hyperpath.csv')
     all_df = {
-        'head': df[df['perspective'] == 'head'],
-        'tail': df[df['perspective'] == 'tail'],
+        # 'head': df[df['perspective'] == 'head'],
+        # 'tail': df[df['perspective'] == 'tail'],
         'path': path_df,
-        'all': pd.concat([df, path_df])
+        # 'all': pd.concat([df, path_df])
     }
     setting = 'path'
     ech(f'processing {setting} setting')
@@ -85,7 +85,7 @@ else:
 
 out_df = pd.DataFrame()
 suffix = f'(top{args.top_n_explanation})'
-out_file = f"experiments/{system}{suffix}_necessary_{args.method.lower()}_{args.dataset.lower().replace('-', '')}.csv"
+out_file = f"experiments/{system}{suffix}_{args.method.lower()}_{args.dataset.lower().replace('-', '')}.csv"
 out_tmp = f'output_end_to_end_{system}{suffix}.csv'
 ech(f'output to {out_file} and {args.output_folder}/{out_tmp}')
 
@@ -226,12 +226,26 @@ if path_df is not None:
     for prediction in predictions:
         samples_to_explain.add(prediction)
         pre_df = path_df[path_df['prediction'] == str(prediction)]
+        pre_df = pre_df[pre_df['relevance'] > 0]
         pre_df.sort_values(by=['relevance'], ascending=False, inplace=True)
-        
-        for i in range(min(len(pre_df), args.top_n_explanation)):
-            sample_2_top_n_rules[prediction].append((list(eval(pre_df.iloc[i]['triples'])),
-                                                        pre_df.iloc[i]['relevance'],
-                                                        'xrule'))
+
+        head_to_exp = {}
+        for i in range(len(pre_df)):
+            triples = eval(pre_df.iloc[i]['triples'])
+
+            if triples[0] in head_to_exp:
+                ts, relevace, _ = head_to_exp[triples[0]]
+                ts = list(set(ts + triples))
+                # 路径太长没必要加
+                if len(ts) < 8:
+                    head_to_exp[triples[0]] = (ts, relevace+pre_df.iloc[i]['relevance'], 'xrule')
+            else:
+                head_to_exp[triples[0]] = (triples, pre_df.iloc[i]['relevance'], 'xrule')
+            
+        head_to_exp = sorted(head_to_exp.items(), key=lambda x: x[1][1], reverse=True)
+
+        for i in range(min(len(head_to_exp), args.top_n_explanation)):
+            sample_2_top_n_rules[prediction].append(head_to_exp[i][1])
 
         sample_2_top_n_rules[prediction] = sorted(sample_2_top_n_rules[prediction], key=lambda x: x[1], reverse=True)
         for i in range(min(len(sample_2_top_n_rules[prediction]), args.top_n_explanation)):
@@ -257,19 +271,14 @@ for sample in samples_to_explain:
         if rule[2] == 'baseline':
             all_first_hops.update(rule[0])
         else:
-            if ix > math.ceil(args.top_n_explanation / 2) and rule[1] <= DEFAULT_VALID_THRESHOLD:
-                break
+            # if ix > math.ceil(args.top_n_explanation / 2) and rule[1] <= DEFAULT_VALID_THRESHOLD:
+            #     break
             cur_samples_to_remove += rule[0]
 
     for first_hop in all_first_hops:
         paths = all_first_hop2paths[sample][tuple(first_hop)]
         cur_samples_to_remove += random_shortest_path(paths)
 
-    # if system.count('+') or system.count('xrule'):
-    #     for rule in best_rule_samples:
-    #         if rule[2] == baseline:
-    #             cur_samples_to_remove += rule[0]
-    #             break
     cur_samples_to_remove = list(set(cur_samples_to_remove))
 
     samples_to_remove += cur_samples_to_remove

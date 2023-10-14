@@ -3,30 +3,20 @@ import os
 import argparse
 import pandas as pd
 import matplotlib.pyplot as plt
-import pandas as pd
 import itertools
+import numpy as np
 
 parser = argparse.ArgumentParser(description="Model-agnostic tool for explaining link predictions")
 
 sys.path.append(
     os.path.realpath(os.path.join(os.path.abspath(__file__), os.path.pardir, os.path.pardir)))
 
-parser.add_argument("--mode",
-                    type=str,
-                    choices=['necessary', 'sufficient'],
-                    default='necessary',
-                    help="The mode for which to plot the explanation lengths: necessary or sufficient")
-
-parser.add_argument("--save",
-                    type=bool,
-                    default=False,
-                    help="Whether to just show the table or save it in Kelpie/reproducibility_images")
-
-args = parser.parse_args()
 list1 = ['ComplEx', 'ConvE'] 
 list2 = ['FB15k237', 'WN18RR', 'MOF-3000']
 list3 = ['H@1', 'MRR']
 df = pd.DataFrame(columns=['.'.join(t) for t in itertools.product(list1, list2, list3)])
+df_length = pd.DataFrame(columns=['.'.join(t) for t in itertools.product(list1, list2)])
+
 
 def rd(x):
     return round(x, 3)
@@ -40,8 +30,10 @@ def tostr(x):
         return x[1:]
     return x
 
-def read_necessary_output_end_to_end(filepath):
-    fact_to_explain_2_details = {}
+def read_output_end_to_end(filepath):
+    prediction_2_details = {}
+    prediction_2_explanation_length = {}
+
     with open(filepath, "r") as input_file:
         input_lines = input_file.readlines()
         for line in input_lines:
@@ -68,10 +60,10 @@ def read_necessary_output_end_to_end(filepath):
             _original_score, _new_score = float(bits[-4]), float(bits[-3])
             _original_tail_rank, _new_tail_rank = float(bits[-2]), float(bits[-1])
 
-            fact_to_explain_2_details[_fact_to_explain] = (
-                _explanation_facts, _original_score, _new_score, _original_tail_rank, _new_tail_rank)
+            prediction_2_details[_fact_to_explain] = (
+                _explanation_facts, _original_score, _new_score, _original_tail_rank, _new_tail_rank, len(_explanation_facts))
 
-    return fact_to_explain_2_details
+    return prediction_2_details
 
 
 def read_xrule_output_end_to_end(filepath):
@@ -114,37 +106,35 @@ def mr(ranks):
     return rd(rank_sum / float(len(ranks)))
 
 
-KELPIE_ROOT = os.path.realpath(os.path.join(os.path.realpath(__file__), os.pardir, os.pardir, os.pardir, os.pardir))
-END_TO_END_EXPERIMENT_ROOT = os.path.realpath(os.path.join(os.path.realpath(__file__), os.pardir))
-
-_systems = ["Criage", "DP", "K1", "Kelpie", "Xrule", "K1+Xrule", "Kelpie+Xrule"]
+_systems = ["Criage", "DP", "K1", "Kelpie", "Xrule"] #, "K1+Xrule", "Kelpie+Xrule"]
 systems = []
-for suffix in ['', '(top5)']:
+for suffix in ['', '(top3)', '(top5)']:
     systems += [x+suffix for x in _systems]
 
 models = ["ComplEx", "ConvE"]
 datasets = ["FB15k237", "WN18RR", "MOF-3000"] # "FB15k", "WN18", 
-mode = args.mode
-save = args.save
 
-output_data = []
-row_labels = []
+output_rows = []
+output_rows_length = []
+
 for system in systems:
-    row_labels.append(f'{system}')
     system = system.replace("DP", "data_poisoning").lower()
-    new_data_row = []
+    new_row = []
+    new_row_length = []
+
     for model in models:
         if model == "TransE" and system == "Criage":
             for dataset in datasets:
-                new_data_row.append("-")
+                new_row.append("-")
+                new_row_length.append("-")
             continue
         
         for dataset in datasets:
-            print(f"Processing {system} {model} {dataset} {mode}")
+            print(f"Processing {system} {model} {dataset}")
             
             end_to_end_output_filename = "_".join(
-                [system, mode.lower(), model.lower(), dataset.lower().replace("-", "")]) + ".csv"
-            end_to_end_output_filepath = os.path.join(END_TO_END_EXPERIMENT_ROOT, end_to_end_output_filename)
+                [system, 'necessary', model.lower(), dataset.lower().replace("-", "")]) + ".csv"
+            end_to_end_output_filepath = os.path.join('experiments', end_to_end_output_filename)
             
             # 如果有，则用新的，否则用旧的
             if system.count('(top') == 0:
@@ -153,7 +143,8 @@ for system in systems:
                 #     end_to_end_output_filepath = top1_file
             
             if not os.path.isfile(end_to_end_output_filepath):
-                new_data_row.append("-")
+                new_row.append("-")
+                new_row_length.append("-")
                 continue
 
             original_ranks = []
@@ -165,19 +156,22 @@ for system in systems:
                 fact_2_kelpie_explanations = read_xrule_output_end_to_end(end_to_end_output_filepath)
             except Exception as e:
                 print(e)
-                new_data_row.append("-")
+                new_row.append("-")
+                new_row_length.append("-")
                 df.loc[system, f'{model}.{dataset}.H@1'] = "-"
                 df.loc[system, f'{model}.{dataset}.MRR'] = "-"
+                df_length.loc[system, f'{model}.{dataset}'] = "-"
                 continue
 
             # except:
             #     prefix = '['
-            #     fact_2_kelpie_explanations = read_necessary_output_end_to_end(end_to_end_output_filepath)
+            #     fact_2_kelpie_explanations = read_output_end_to_end(end_to_end_output_filepath)
 
+            cur_lengths = []
             for fact_to_explain in fact_2_kelpie_explanations:
-                kelpie_expl, _, _, kelpie_original_tail_rank, kelpie_new_tail_rank, exp_length = fact_2_kelpie_explanations[
-                    fact_to_explain]
+                kelpie_expl, _, _, kelpie_original_tail_rank, kelpie_new_tail_rank, exp_length = fact_2_kelpie_explanations[fact_to_explain]
 
+                cur_lengths.append(exp_length)
                 original_ranks.append(kelpie_original_tail_rank)
                 if exp_length == 0:
                     # 没有解释，则rank不变！
@@ -198,11 +192,15 @@ for system in systems:
             if len(new_ranks) < 100:
                 ret += f'({len(new_ranks)})'
 
-            new_data_row.append(prefix + ret)
+            new_row.append(prefix + ret)
+            new_row_length.append(tostr(np.average(cur_lengths)))   # + '±' + tostr(np.std(cur_lengths))
 
             df.loc[system, f'{model}.{dataset}.H@1'] = - round(h1_difference, 3)
             df.loc[system, f'{model}.{dataset}.MRR'] = - round(mrr_difference, 3)
-    output_data.append(new_data_row)
+            df_length.loc[system, f'{model}.{dataset}'] = tostr(np.average(cur_lengths))
+
+    output_rows.append(new_row)
+    output_rows_length.append(new_row_length)
 
 column_labels = []
 
@@ -214,24 +212,39 @@ for model in models:
 fig = plt.figure(figsize=(10, 10))
 ax = fig.gca()
 ax.axis('off')
-table = ax.table(cellText=output_data,
+table = ax.table(cellText=output_rows,
                  loc="center",
                  rowLoc='center',
                  cellLoc='center',
                  colLabels=column_labels,
-                 rowLabels=row_labels)
+                 rowLabels=systems)
 
-if not save:
-    plt.show()
-else:
-    table.scale(1, 1.7)
-    plt.subplots_adjust(left=0.15, bottom=0.15)
-    output_folder = os.path.join(KELPIE_ROOT, "reproducibility_images")
-    if not os.path.isdir(output_folder):
-        os.makedirs(output_folder)
-    output_path = os.path.join(output_folder, f'end_to_end_table_{args.mode}.png')
-    print(f'Saving {args.mode} end-to-end results in {output_path}... ')
-    plt.savefig(output_path, dpi=300, bbox_inches="tight")
-    print('Done\n')
+table.scale(1, 1.7)
+plt.subplots_adjust(left=0.15, bottom=0.15)
+output_folder = "reproducibility_images"
+if not os.path.isdir(output_folder):
+    os.makedirs(output_folder)
+output_path = os.path.join(output_folder, f'end_to_end_table.png')
+print(f'Saving end-to-end results in {output_path}... ')
+plt.savefig(output_path, dpi=300, bbox_inches="tight")
+df.to_csv(os.path.join(output_folder, 'end_to_end_table.csv'))
 
-    df.to_csv(os.path.join(output_folder, 'end_to_end_table.csv'))
+
+fig = plt.figure(figsize=(10, 10))
+ax = fig.gca()
+ax.axis('off')
+table = ax.table(cellText=output_rows_length,
+                 loc="center",
+                 rowLoc='center',
+                 cellLoc='center',
+                 colLabels=column_labels,
+                 rowLabels=systems)
+
+table.scale(1, 1.7)
+plt.subplots_adjust(left=0.15, bottom=0.15)
+if not os.path.isdir(output_folder):
+    os.makedirs(output_folder)
+output_path = os.path.join(output_folder, f'explanation_lengths_table.png')
+print(f'Saving explanation lengths in {output_path}... ')
+plt.savefig(output_path, dpi=300, bbox_inches="tight")
+df_length.to_csv(os.path.join(output_folder, f'explanation_lengths_table.csv'))

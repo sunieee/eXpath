@@ -1,12 +1,9 @@
 from typing import Tuple, Any
 from dataset import Dataset
-from prefilters.no_prefilter import NoPreFilter
-from prefilters.prefilter import TOPOLOGY_PREFILTER, TYPE_PREFILTER, NO_PREFILTER
-from prefilters.topology_prefilter import TopologyPreFilter
-from prefilters.type_based_prefilter import TypeBasedPreFilter
+from explanation_builders.prefilter import TopologyPreFilter
 from relevance_engines.data_poisoning_engine import DataPoisoningEngine
 from link_prediction.models.model import Model, LEARNING_RATE
-from explanation_builders.dp_necessary_builder import DataPoisoningNecessaryExplanationBuilder
+from explanation_builders.dp_builder import DataPoisoningNecessaryExplanationBuilder
 
 
 class DataPoisoning:
@@ -38,7 +35,7 @@ class DataPoisoning:
                                           hyperparameters=hyperparameters,
                                           epsilon=hyperparameters[LEARNING_RATE])
 
-    def explain_necessary(self,
+    def explain(self,
                           sample_to_explain: Tuple[Any, Any, Any],
                           perspective: str,
                           num_promising_samples=50):

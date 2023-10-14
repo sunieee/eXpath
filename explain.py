@@ -138,7 +138,7 @@ def explain_sample_kelpie(prediction):
     i = testing_samples.index(prediction)
     fact = dataset.sample_to_fact(prediction)
     ech(f"Explaining fact {i}/{len(testing_samples)}: {prediction}  {dataset.sample_to_fact(prediction, True)}")
-    rule_samples_with_relevance = kelpie.explain_necessary(prediction,
+    rule_samples_with_relevance = kelpie.explain(prediction,
                                                         perspective="head",
                                                         num_promising_samples=args.prefilter_threshold)
     

@@ -29,9 +29,9 @@ The modules would work analogously to explain a _head_ prediction. The only modu
 
 ## Kelpie Explanations 
 
-Under the broad definition described above, Kelpie supports two explanation scenarios: _necessary_ explanations and _sufficient_ explanations.
+Under the broad definition described above, Kelpie supports two explanation scenarios: _ explanations and _sufficient_ explanations.
 
-* Given a _tail_ prediction <_h_, _r_, _t_>, a **necessary explanation** is the smallest set of training facts featuring _h_ such that, if we remove those facts from the training set and re-train the model from scratch, the model will not be able to identify _t_ as the top-ranking tail. In other words, a _necessary_ explanation is the smallest set of _h_ facts that have made possible for the model to pick the correct tail. An analogous definition can be derived for head predictions. 
+* Given a _tail_ prediction <_h_, _r_, _t_>, a **necessary explanation** is the smallest set of training facts featuring _h_ such that, if we remove those facts from the training set and re-train the model from scratch, the model will not be able to identify _t_ as the top-ranking tail. In other words, a _ explanation is the smallest set of _h_ facts that have made possible for the model to pick the correct tail. An analogous definition can be derived for head predictions. 
 
 * Given a _tail_ prediction <_h_, _r_, _t_>, a **sufficient explanation** is the smallest set of training facts featuring _h_ such that, if we add those facts to random entities _c_ for which the model does not predict <_c_, _r_, _t_>, and we retrain the model from scratch, the model will start predicting <_c_, _r_, _t_> too. In other words, a _sufficient_ explanation is the smallest set of _h_ facts make it possible to extend the prediction to any other entity in the graph. An analogous definition can be derived for head predictions.
 
@@ -98,7 +98,7 @@ We report here the experiments included in our paper, indicating the figure or t
 
 We showcase the effectiveness of Kelpie by explaining, for each model and dataset, the tail predictions of a set of 100 correctly predicted test facts both in *necessary* and in *sufficient* scenario. 
 The `.csv` files containing the facts we explain for each model and dataet can be found in the `input_facts` folder.
-We report result files for each model and dataset, both extracted by Kelpie and by the baseline approaches, both in the _necessary_ and for the _sufficient_ scenario, in the `results.zip` archive in our repository.
+We report result files for each model and dataset, both extracted by Kelpie and by the baseline approaches, both in the _ and for the _sufficient_ scenario, in the `results.zip` archive in our repository.
 
 Across the necessary and sufficient scenarios for the same model and dataset we usually employ the same set of 100 correctly predicted test facts. 
 The only exception in this regard is in the `ConvE` explanations for `FB15k` and `FB15k-237` predictions: in these cases, a few <h, r, t> predictions used in necessary explanations could not be explained sufficiently because, due to strong dataset biases, *all entities in the dataset would be predicted correctly if used instead of h*. This made it impossible to extract a set of `c` entities to convert, because any entity would appear already converted without applying any sufficient explanation. We thus replaced these predictions for the sufficient scenario, obtaining created two different version `_nec` and `_suff` for the input facts file.
@@ -120,7 +120,7 @@ Kelpie experiments are based on the execution of two separate scripts:
 
 The `explain.py` script also accepts an optional `--baseline` parameter whose acceptable values are `data_poisoning` or `criage`; using this parameter allows to estract results for our baselines instead of Kelpie.
 
-We report here our end-to-end results for _necessary_ explanations. We measure the effectiveness of _necessary_ explanations by measuring how removing the explanation facts (and re-training the model) worsens the H@1 and MRR metrics of the predictions to explain, compared to the original model: the greater the decrease, the more effective the explanation (i.e., the "more necessary" the explanation facts actually were). Therefore, in this scenario, the more negative the ΔH@1 and ΔMRR values, the better the explanation effectiveness.
+We report here our end-to-end results for _ explanations. We measure the effectiveness of _ explanations by measuring how removing the explanation facts (and re-training the model) worsens the H@1 and MRR metrics of the predictions to explain, compared to the original model: the greater the decrease, the more effective the explanation (i.e., the "more necessary" the explanation facts actually were). Therefore, in this scenario, the more negative the ΔH@1 and ΔMRR values, the better the explanation effectiveness.
 
 <p align="center">
 <img width="60%" alt="end to end necessary experiment" src="https://user-images.githubusercontent.com/6909990/135614246-b68adc39-c771-404d-bc74-4ca532f8258e.png">

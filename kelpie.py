@@ -1,11 +1,8 @@
 from typing import Tuple, Any
 from dataset import Dataset
-from prefilters.no_prefilter import NoPreFilter
-from prefilters.prefilter import TYPE_PREFILTER, TOPOLOGY_PREFILTER, NO_PREFILTER
-from prefilters.type_based_prefilter import TypeBasedPreFilter
-from prefilters.topology_prefilter import TopologyPreFilter
+from explanation_builders.prefilter import TopologyPreFilter
 from link_prediction.models.model import Model
-from explanation_builders.stochastic_necessary_builder import StochasticNecessaryExplanationBuilder
+from explanation_builders.stochastic_builder import StochasticNecessaryExplanationBuilder
 import numpy as np
 from relevance_engines.post_training_engine import PostTrainingEngine
 
@@ -53,7 +50,7 @@ class Kelpie:
                                          dataset=dataset,
                                          hyperparameters=hyperparameters)
 
-    def explain_necessary(self,
+    def explain(self,
                           sample_to_explain: Tuple[Any, Any, Any],
                           perspective: str,
                           num_promising_samples: int = 20):
