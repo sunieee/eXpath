@@ -22,7 +22,6 @@ class Kelpie:
                  model: Model,
                  dataset: Dataset,
                  hyperparameters: dict,
-                 prefilter_type: str,
                  relevance_threshold: float = None,
                  max_explanation_length: int = DEFAULT_MAX_LENGTH):
         """
@@ -41,14 +40,14 @@ class Kelpie:
         self.relevance_threshold = relevance_threshold
         self.max_explanation_length = max_explanation_length
 
-        if prefilter_type == TOPOLOGY_PREFILTER:
-            self.prefilter = TopologyPreFilter(model=model, dataset=dataset)
-        elif prefilter_type == TYPE_PREFILTER:
-            self.prefilter = TypeBasedPreFilter(model=model, dataset=dataset)
-        elif prefilter_type == NO_PREFILTER:
-            self.prefilter = NoPreFilter(model=model, dataset=dataset)
-        else:
-            self.prefilter = TopologyPreFilter(model=model, dataset=dataset)
+        # if prefilter_type == TOPOLOGY_PREFILTER:
+        #     self.prefilter = TopologyPreFilter(model=model, dataset=dataset)
+        # elif prefilter_type == TYPE_PREFILTER:
+        #     self.prefilter = TypeBasedPreFilter(model=model, dataset=dataset)
+        # elif prefilter_type == NO_PREFILTER:
+        #     self.prefilter = NoPreFilter(model=model, dataset=dataset)
+        # else:
+        self.prefilter = TopologyPreFilter(model=model, dataset=dataset)
 
         self.engine = PostTrainingEngine(model=model,
                                          dataset=dataset,

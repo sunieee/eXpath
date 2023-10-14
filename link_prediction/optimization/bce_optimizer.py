@@ -8,6 +8,7 @@ import os
 from link_prediction.models.conve import ConvE
 from link_prediction.models.model import Model, BATCH_SIZE, LABEL_SMOOTHING, LEARNING_RATE, DECAY, EPOCHS, gpu_lock, post_train
 from link_prediction.optimization.optimizer import Optimizer
+import time
 
 
 def rd(x):
@@ -51,8 +52,6 @@ class BCEOptimizer(Optimizer):
         Optimizer.__init__(self, model=model, hyperparameters=hyperparameters, verbose=verbose)
 
         self.args = model.args
-        self.train_restrain = self.args.train_restrain
-        self.tail_restrain = self.args.tail_restrain
         self.batch_size = hyperparameters[BATCH_SIZE]
         self.label_smoothing = hyperparameters[LABEL_SMOOTHING]
         self.learning_rate = hyperparameters[LEARNING_RATE]
@@ -71,10 +70,12 @@ class BCEOptimizer(Optimizer):
               patience: int = -1,
             type='tail'):
 
+        t = time.time()
         all_training_samples = np.vstack((train_samples, self.dataset.invert_samples(train_samples)))
         er_vocab = self.extract_er_vocab(all_training_samples)
         er_vocab_pairs = list(er_vocab.keys())
         er_vocab_pairs.sort(key=lambda x: x[1]) # 对样例按照relation排序！
+        print('prepare for train time:', time.time()-t)
 
         self.model.cuda()
         best_metric = None
@@ -145,8 +146,7 @@ class BCEOptimizer(Optimizer):
               er_vocab_pairs,
               batch_size: int, epoch: int=0):
 
-        if self.tail_restrain is None:
-            np.random.shuffle(er_vocab_pairs)
+        np.random.shuffle(er_vocab_pairs)
         self.model.train()
 
         with tqdm.tqdm(total=len(er_vocab_pairs), unit='ex', disable=not self.verbose) as bar:
@@ -191,12 +191,7 @@ class BCEOptimizer(Optimizer):
                 self.model.hidden_layer.eval()
 
         self.optimizer.zero_grad()
-        if self.train_restrain:
-            predictions = self.model.forward(batch, restrain=True)
-            if self.tail_restrain:
-                targets = targets[:, self.model.get_tail_set(batch, '-')]
-        else:
-            predictions = self.model.forward(batch)
+        predictions = self.model.forward(batch)
         loss = self.loss(predictions, targets)
         # 发现tail_size为0，使得按照BCE公式分母为0 => loss=nan
         if np.isnan(loss.item()):

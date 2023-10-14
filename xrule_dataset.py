@@ -1,6 +1,6 @@
 import copy
 from collections import defaultdict
-import numpy
+import numpy as np
 from dataset import Dataset
 
 class XruleDataset(Dataset):
@@ -20,7 +20,8 @@ class XruleDataset(Dataset):
 
     def __init__(self,
                  dataset: Dataset,
-                 original_entity_id): 
+                 original_entity_id,
+                 concerning_entities): 
         # 所有与entity_ids相关的训练样本（包括反向关系）
 
         super(XruleDataset, self).__init__(name=dataset.name,
@@ -43,6 +44,7 @@ class XruleDataset(Dataset):
         self.num_relations = dataset.num_relations
         self.num_direct_relations = dataset.num_direct_relations
         self.dataset = dataset
+        self.concerning_entities = concerning_entities
 
         # copy relevant data structures
         self.to_filter = copy.deepcopy(dataset.to_filter)
@@ -83,7 +85,7 @@ class XruleDataset(Dataset):
         self.kelpie_valid_samples = Dataset.replace_entities_in_samples(self.original_valid_samples, self.original_entity_id, self.kelpie_entity_id)
         self.kelpie_test_samples = Dataset.replace_entities_in_samples(self.original_test_samples, self.original_entity_id, self.kelpie_entity_id)
 
-        print('\tent2kelpie:', self.entity2kelpie)
+        print('\tentity2kelpie:', self.entity2kelpie)
         print(f'\tkelpie dataset created: train {len(self.kelpie_train_samples)}, valid {len(self.kelpie_valid_samples)}, test {len(self.kelpie_test_samples)}')
         # print(self.kelpie_train_samples)
         # print('kelpie train samples:', self.kelpie_train_samples[:10])
@@ -94,7 +96,7 @@ class XruleDataset(Dataset):
             samples_to_stack.append(self.kelpie_valid_samples)
         if len(self.kelpie_test_samples) > 0:
             samples_to_stack.append(self.kelpie_test_samples)
-        all_kelpie_samples = numpy.vstack(samples_to_stack)
+        all_kelpie_samples = np.vstack(samples_to_stack)
         for i in range(all_kelpie_samples.shape[0]):
             self.append_sample(self.to_filter, all_kelpie_samples[i])
             # if the sample was a training sample, also do the same for the train_to_filter data structure;
@@ -134,14 +136,14 @@ class XruleDataset(Dataset):
         #     raise Exception("Could not find the original entity " + str(self.head_id) + " in the passed sample " + str(original_sample))s
 
     # override
-    def remove_training_samples(self, samples_to_remove: numpy.array):
+    def remove_training_samples(self, samples_to_remove: np.array):
         """
             Remove some training samples from the kelpie training samples of this KelpieDataset.
             The samples to remove must still feature the original entity id; this method will convert them before removal.
             The KelpieDataset will keep track of the last performed removal so it can be undone if necessary.
 
             :param samples_to_remove: the samples to add, still featuring the id of the original entity,
-                                   in the form of a numpy array
+                                   in the form of a np array
         """
 
         for sample in samples_to_remove:
@@ -167,7 +169,7 @@ class XruleDataset(Dataset):
         # get the indices of the samples to remove in the kelpie_train_samples structure
         # and use them to perform the actual removal
         kelpie_train_indices_to_remove = [self.kelpie_train_sample_2_index[x] for x in kelpie_train_samples_to_remove]
-        self.kelpie_train_samples = numpy.delete(self.kelpie_train_samples, kelpie_train_indices_to_remove, axis=0)
+        self.kelpie_train_samples = np.delete(self.kelpie_train_samples, kelpie_train_indices_to_remove, axis=0)
 
     
     def remove_sample(self, data, kelpie_sample):
@@ -178,7 +180,7 @@ class XruleDataset(Dataset):
             data[(h, r)].remove(t)
             data[(t, r + self.num_direct_relations)].remove(h)
         except Exception as e:
-            print('!remove sample error:', kelpie_sample)
+            print('! remove sample error:', kelpie_sample)
             print(e)
 
         # if r < self.num_direct_relations:
@@ -203,7 +205,7 @@ class XruleDataset(Dataset):
             instead of creating a new KelpieDataset from scratch, is to improve efficiency.
         """
         if self.last_removed_samples_number <= 0:
-            log("No removal to undo. Skip!")
+            print("No removal to undo. Skip!")
             self.last_removed_samples = []
             self.last_removed_samples_number = 0
             self.last_filter_removals = defaultdict(lambda:[])
@@ -232,27 +234,51 @@ class XruleDataset(Dataset):
                                                 old_entity=entity_id,
                                                 new_entity=self.entity2kelpie[entity_id])
         return original_sample
-
-    ### private utility methods
-    @staticmethod
-    def _extract_samples_with_entity(samples, entity_id):
-        result = samples[numpy.where(numpy.logical_or(samples[:, 0] == entity_id, samples[:, 2] == entity_id))]
+    
+    def _extract_samples_with_entities(self, samples, entity_ids):
+        result = samples[np.where(np.logical_or(np.isin(samples[:, 0], entity_ids),
+                                                np.isin(samples[:, 2], entity_ids)))]
+        
+        print('original result:', result.shape)
+        valid_idx = []
+        for ret in result:
+            if ret[0] in self.concerning_entities or ret[2] in self.concerning_entities:
+                valid_idx.append(True)
+            else:
+                valid_idx.append(False)
+        result = result[valid_idx]
+        print('concerning result:', result.shape)
 
         # Check if the result is 1D, and if so, convert to 2D
         if result.ndim == 1:
-            result = result[numpy.newaxis, :]
+            result = result[np.newaxis, :]
 
         assert result.ndim == 2
         return result
     
-    @staticmethod
-    def _extract_samples_with_entities(samples, entity_ids):
-        result = samples[numpy.where(numpy.logical_or(numpy.isin(samples[:, 0], entity_ids),
-                                                      numpy.isin(samples[:, 2], entity_ids)))]
 
-        # Check if the result is 1D, and if so, convert to 2D
-        if result.ndim == 1:
-            result = result[numpy.newaxis, :]
+'''
+print('original result:', result.shape)
+# print('concerning entities:', self.concerning_entities)
 
-        assert result.ndim == 2
-        return result
+mask = np.logical_or(np.isin(result[:, 0], self.concerning_entities),
+            np.isin(result[:, 2], self.concerning_entities))
+result = result[mask]
+
+valid_idx = []
+for ret in result:
+    if ret[0] in self.concerning_entities or ret[2] in self.concerning_entities:
+        valid_idx.append(True)
+    else:
+        valid_idx.append(False)
+result = result[valid_idx]
+
+entities = set(list(result[:, 0]) + list(result[:, 2]))
+print(len(entities))
+print(len(self.concerning_entities))
+intersect_entities = entities & self.concerning_entities
+print('intersect entities:', len(intersect_entities), intersect_entities)
+
+print('concerning result:', result.shape)
+
+'''

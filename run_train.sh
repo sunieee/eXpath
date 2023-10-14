@@ -21,8 +21,7 @@ train() {
                 --run $run --relevance_method score --output_folder $output_folder  \
                 2>&1 > $output_folder/evaluate.log &
                         # > $output_folder/output.log
-                        # --specify_relation  \
-                        # --embedding_model "$embedding_model" --train_restrains
+                        # --specify_relation  
         # CUDA_VISIBLE_DEVICES=$device python explain.py --dataset $dataset --method $method --baseline xrule \
         #         --run $run --relevance_method score --output_folder $output_folder # > $output_folder/output.log
 	sleep 1

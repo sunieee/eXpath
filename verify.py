@@ -257,7 +257,7 @@ for sample in samples_to_explain:
         if rule[2] == 'baseline':
             all_first_hops.update(rule[0])
         else:
-            if ix > args.top_n_explanation // 2 and rule[1] <= DEFAULT_VALID_THRESHOLD:
+            if ix > math.ceil(args.top_n_explanation / 2) and rule[1] <= DEFAULT_VALID_THRESHOLD:
                 break
             cur_samples_to_remove += rule[0]
 
@@ -265,11 +265,11 @@ for sample in samples_to_explain:
         paths = all_first_hop2paths[sample][tuple(first_hop)]
         cur_samples_to_remove += random_shortest_path(paths)
 
-    if system.count('+') or system.count('xrule'):
-        for rule in best_rule_samples:
-            if rule[2] == baseline:
-                cur_samples_to_remove += rule[0]
-                break
+    # if system.count('+') or system.count('xrule'):
+    #     for rule in best_rule_samples:
+    #         if rule[2] == baseline:
+    #             cur_samples_to_remove += rule[0]
+    #             break
     cur_samples_to_remove = list(set(cur_samples_to_remove))
 
     samples_to_remove += cur_samples_to_remove

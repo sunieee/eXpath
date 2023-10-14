@@ -67,44 +67,6 @@ def tostr(x):
         x += ".0"
     return x
 
-
-def read_sufficient_output_end_to_end(filepath):
-    prediction_2_explanation_length = {}
-    fact_to_convert_2_original_fact_to_explain = {}
-    with open(filepath, "r") as input_file:
-        input_lines = input_file.readlines()
-        for line in input_lines:
-            bits = line.strip().split(";")
-            _head_to_explain, _rel_to_explain, _tail_to_explain = bits[0:3]
-            _head_to_convert, _rel_to_convert, _tail_to_convert = bits[3:6]
-
-            _fact_to_explain = (_head_to_explain, _rel_to_explain, _tail_to_explain)
-            _fact_to_convert = (_head_to_convert, _rel_to_convert, _tail_to_convert)
-
-            _explanation_bits = bits[6:-4]
-            assert len(_explanation_bits) % 3 == 0
-
-            _explanation_facts = []
-            i = 0
-            while i < len(_explanation_bits):
-
-                if _explanation_bits[i] != "":
-                    _cur_expl_fact_head, _cur_expl_fact_rel, _cur_expl_fact_tail = _explanation_bits[i], \
-                                                                                   _explanation_bits[i + 1], \
-                                                                                   _explanation_bits[i + 2]
-                    _cur_expl_fact = (_cur_expl_fact_head, _cur_expl_fact_rel, _cur_expl_fact_tail)
-                    _explanation_facts.append(_cur_expl_fact)
-                i += 3
-
-            _explanation_facts = tuple(_explanation_facts)
-            _original_score, _new_score = float(bits[-4]), float(bits[-3])
-            _original_tail_rank, _new_tail_rank = float(bits[-2]), float(bits[-1])
-
-            _explanation_length = len(_explanation_facts)
-            prediction_2_explanation_length[_fact_to_convert] = _explanation_length
-    return prediction_2_explanation_length
-
-
 def is_triple(fact):
     return len(fact) == 3 and type(fact) == tuple and type(fact[0]) in [str, int]
 

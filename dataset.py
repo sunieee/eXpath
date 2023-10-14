@@ -55,59 +55,7 @@ def in_out_norm(graph):
     return graph
 
 
-class Dataset:
-
-    def make_tail_restrain(self, tail_restrain):
-        print('making tail restrain...')
-        self.tail_restrain = defaultdict(list)
-        # 注意name都是小写的！
-        # print(self.relation_name_2_id)
-        # print(self.entity_id_2_name)
-        for rel, head_tail in tail_restrain.items():
-            head_type, tail_type = head_tail.split('->')
-
-            rel_id = self.relation_name_2_id[rel.lower()]
-            tail_type = set([x.strip().lower() for x in tail_type.split(',')])
-            head_type = set([x.strip().lower() for x in head_type.split(',')])
-
-            for k1, v1 in self.entity_name_2_id.items():
-                # 除了关系尾实体以外，还有反关系尾实体（关系头实体）
-                if k1[:2] in tail_type:
-                    self.tail_restrain[rel_id].append(v1)
-                if k1[:2] in head_type:
-                    self.tail_restrain[rel_id + self.num_direct_relations].append(v1)
-
-            # 尾实体强约束
-            if 'ref' in tail_type:
-                self.tail_restrain[rel_id] = self.rid2target[rel_id]
-
-        for k, v in self.tail_restrain.items():
-            print(f'\t{k}({self.relation_id_2_name[k]}) tail restrain length: {len(v)}')
-
-    
-    def make_graph(self):
-        src = list(self.train_samples[:, 0])
-        dst = list(self.train_samples[:, 2])
-        rels = list(self.train_samples[:, 1])
-        # 添加INVERSE relation
-        for i in range(len(self.train_samples)):
-            src.append(dst[i])
-            dst.append(src[i])
-            rels.append(rels[i] + self.num_direct_relations)
-
-        self.g = dgl.graph((src, dst), num_nodes=self.num_entities)
-        self.g.edata["etype"] = th.Tensor(rels).long()
-
-        # identify in and out edges
-        in_edges_mask = [True] * (self.g.num_edges() // 2) + [False] * (self.g.num_edges() // 2)
-        out_edges_mask = [False] * (self.g.num_edges() // 2) + [True] * (self.g.num_edges() // 2)
-        self.g.edata["in_edges_mask"] = th.Tensor(in_edges_mask)
-        self.g.edata["out_edges_mask"] = th.Tensor(out_edges_mask)
-        self.g = self.g.to('cuda')
-        self.g = in_out_norm(self.g)
-        print(self.g)
-
-
+class Dataset:    
     def __init__(self,
                  name: str,
                  separator: str = "\t",
@@ -127,7 +75,6 @@ class Dataset:
         #       as they are built from already loaded pre-existing datasets.
 
         self.args=args
-        self.tail_restrain = None
         self.name = name
         self.separator = separator
         self.home = os.path.join(DATA_PATH, self.name)
@@ -225,14 +172,7 @@ class Dataset:
                 self.rid2target[k] = v
                 print(f'\t{k}({self.relation_id_2_name[k]}) target length: {len(v)}')
             
-            self.tail_restrain = None
-            if args.restrain_dic:
-                self.make_tail_restrain(args.restrain_dic)
             self.g = None
-            if args.embedding_model and args.embedding_model != 'none':
-                print('making graph...')    
-                self.make_graph()
-
             # make the entity_id_2_train_samples and entity_id_2_relation_vector dicts
             self.make_dic()
 
@@ -275,8 +215,6 @@ class Dataset:
                 line = html.unescape(line).lower()   # this is required for some YAGO3-10 lines
                 h, r, t = line.strip().split(separator)
                 triples.append([h, r, t])
-        if self.tail_restrain:
-            triples.sort(key=lambda x: x[1])
 
         for triple in triples:
             head_name, relation_name, tail_name = triple

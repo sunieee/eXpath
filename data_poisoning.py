@@ -19,8 +19,7 @@ class DataPoisoning:
     def __init__(self,
                  model: Model,
                  dataset: Dataset,
-                 hyperparameters: dict,
-                 prefilter_type: str):
+                 hyperparameters: dict):
         """
         DataPoisoning object constructor.
 
@@ -33,14 +32,7 @@ class DataPoisoning:
         self.dataset = dataset
         self.hyperparameters = hyperparameters
 
-        if prefilter_type == TOPOLOGY_PREFILTER:
-            self.prefilter = TopologyPreFilter(model=model, dataset=dataset)
-        elif prefilter_type == TYPE_PREFILTER:
-            self.prefilter = TypeBasedPreFilter(model=model, dataset=dataset)
-        elif prefilter_type == NO_PREFILTER:
-            self.prefilter = NoPreFilter(model=model, dataset=dataset)
-        else:
-            self.prefilter = TopologyPreFilter(model=model, dataset=dataset)
+        self.prefilter = TopologyPreFilter(model=model, dataset=dataset)
         self.engine = DataPoisoningEngine(model=model,
                                           dataset=dataset,
                                           hyperparameters=hyperparameters,

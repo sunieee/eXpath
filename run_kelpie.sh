@@ -31,8 +31,6 @@ explain() {
                 CUDA_VISIBLE_DEVICES=$device python explain.py --dataset $dataset --method $method --system $system \
                         --run $run --relevance_method score --output_folder $output_folder --process $process --split $i \
                         2>&1 > $output_folder/output.log &
-                        # --specify_relation  \
-                        # --embedding_model "$embedding_model" --train_restrain
                 pids[${#pids[@]}]=$! # Store PID of the last background process
                 sleep 0.5
         done

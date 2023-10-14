@@ -45,8 +45,6 @@ class KelpieDataset(Dataset):
         self.relation_name_2_id = copy.deepcopy(dataset.relation_name_2_id)
         self.relation_id_2_name = copy.deepcopy(dataset.relation_id_2_name)
         self.rid2target = copy.deepcopy(dataset.rid2target)
-        if dataset.tail_restrain:
-            self.tail_restrain = copy.deepcopy(dataset.tail_restrain)
         if dataset.g:
             # https://stackoverflow.com/questions/60310123/why-is-graph-copy-slower-than-copy-deepcopygraph-in-networkx
             self.g = copy.deepcopy(dataset.g)

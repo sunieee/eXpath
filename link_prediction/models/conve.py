@@ -96,7 +96,7 @@ class ConvE(Model):
         """
         return False
 
-    def forward(self, samples: np.array, restrain=False):
+    def forward(self, samples: np.array):
         """
             Perform forward propagation on the passed samples
             :param samples: a 2-dimensional np array containing the samples to use in forward propagation, one per row
@@ -104,7 +104,7 @@ class ConvE(Model):
                         - the scores for each passed sample with all possible tails
                         - a partial result to use in regularization
         """
-        return self.all_scores(samples, restrain=restrain)
+        return self.all_scores(samples)
 
     def score(self, samples: np.array) -> np.array:
         """
@@ -285,7 +285,7 @@ class ConvE(Model):
         # update embeddings
         self.entity_embeddings[self.trainable_indices] = self.trainable_entity_embeddings
 
-    def all_scores(self, samples: np.array, restrain=False) -> np.array:
+    def all_scores(self, samples: np.array) -> np.array:
         """
             For each of the passed samples, compute scores for all possible tail entities.
             :param samples: a 2-dimensional np array containing the samples to score, one per row
@@ -311,11 +311,7 @@ class ConvE(Model):
         relation_embeddings = relation_embeddings[samples[:, 1]]
         
         x = self.calculate_g(head_embeddings, relation_embeddings)
-
-        if restrain:
-            tail_embeddings = entity_embeddings[self.get_tail_set(samples)]
-        else:
-            tail_embeddings = entity_embeddings
+        tail_embeddings = entity_embeddings
 
         x = torch.mm(x, tail_embeddings.transpose(1, 0))
         #x += self.b.expand_as(x)
@@ -328,8 +324,6 @@ class ConvE(Model):
         relations = set(samples[:, 1].tolist())
         # print(len(relations), end=split)
         tail_set = []
-        # for relation in relations:
-        #     tail_set += self.tail_restrain[relation]
         lis = list(set(tail_set))
         lis.sort()
         return lis

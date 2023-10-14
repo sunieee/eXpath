@@ -84,24 +84,24 @@ verify_all_xrule() {
 }
 
 
-for method in ComplEx ConvE; do
-    for dataset in FB15k-237 WN18RR MOF-3000; do
-        verify_all_baseline $method $dataset
-    done
-done
+# for method in ComplEx ConvE; do
+#     for dataset in FB15k-237 WN18RR MOF-3000; do
+#         verify_all_baseline $method $dataset
+#     done
+# done
 
-for method in ConvE ComplEx; do
-    for dataset in FB15k-237 WN18RR MOF-3000; do
-        verify_all_xrule $method $dataset
-    done
-done
+# for method in ConvE ComplEx; do
+#     for dataset in FB15k-237 WN18RR MOF-3000; do
+#         verify_all_xrule $method $dataset
+#     done
+# done
 
 # verify_all_baseline ConvE MOF-3000
 
 # verify_all_xrule ComplEx FB15k-237
 
 
-# verify FB15k-237 ComplEx xrule 0
+verify FB15k-237 ComplEx xrule 0
 # verify WN18RR ComplEx kelpie 0
 # verify FB15k-237 ComplEx kelpie+xrule 0
 # verify FB15k-237 ConvE k1 0

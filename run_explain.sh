@@ -12,28 +12,15 @@ explain() {
         dataset=$1
         embedding_model=""
         method=$2
-        device=0,1,2,3
+        # device=0
+        device=`nvidia-smi --query-gpu=index --format=csv,noheader,nounits | awk '{printf "%s,", $1}' | sed 's/,$//'`
 
         name="${method}${embedding_model}_${dataset}-xrule"
         dirname=stage7/${name}
         echo $dirname
         rm -rf $dirname
         
-        base=0
-
-        # for d in $dirname/*/; do
-        #         dir=${d%*/}
-        #         dir=${dir##*/}
-        #         if [[ $dir =~ ^[0-9]+$ ]]; then
-        #                 if ((dir > base)); then
-        #                         base=$dir
-        #                 fi
-        #         fi
-        # done
-        # already=`ls $dirname/already_explain | wc -l`
-        # echo "dirname: $dirname, explained: $already, old process: $base" 
-
-        process=2
+        process=3
         # 将设备字符串按逗号分割为数组
         IFS=',' read -ra devices <<< "$device"
         num_devices=${#devices[@]}
@@ -44,7 +31,7 @@ explain() {
         echo "all process: $process"
         
         for ((i = 0; i < process; i++)); do
-                output_folder=${dirname}/$((base + i + 1))
+                output_folder=${dirname}/$((i + 1))
 
                 echo $output_folder
                 mkdir -p $output_folder
@@ -70,13 +57,13 @@ explain() {
 # explain FB15k-237 ConvE 0001 1
 # explain MOF-3000 ConvE 0001 2
 
-for method in ComplEx ConvE; do
-        for dataset in FB15k-237 WN18RR MOF-3000; do
-                explain $dataset $method
-        done
-done
+# for method in ComplEx ConvE; do
+#         for dataset in FB15k-237 WN18RR MOF-3000; do
+#                 explain $dataset $method
+#         done
+# done
 
-# explain FB15k-237 ComplEx
+explain FB15k-237 ComplEx
 
 # explain FB15k-237 ComplEx 0,1,2
 

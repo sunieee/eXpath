@@ -26,7 +26,6 @@ from link_prediction.models.model import *
 from link_prediction.optimization.bce_optimizer import BCEOptimizer
 from link_prediction.optimization.multiclass_nll_optimizer import MultiClassNLLOptimizer
 from link_prediction.optimization.pairwise_ranking_optimizer import PairwiseRankingOptimizer
-from prefilters.prefilter import TOPOLOGY_PREFILTER, TYPE_PREFILTER, NO_PREFILTER
 from link_prediction.models.tucker import TuckER
 from link_prediction.optimization.bce_optimizer import KelpieBCEOptimizer
 from link_prediction.optimization.multiclass_nll_optimizer import KelpieMultiClassNLLOptimizer
@@ -94,22 +93,10 @@ parser.add_argument("--entities_to_convert",
                     type=str,
                     help="path of the file with the entities to convert (only used by baselines)")
 
-
 parser.add_argument("--relevance_threshold",
                     type=float,
                     default=None,
                     help="The relevance acceptance threshold to use")
-
-prefilters = [TOPOLOGY_PREFILTER, TYPE_PREFILTER, NO_PREFILTER]
-parser.add_argument('--prefilter',
-                    choices=prefilters,
-                    default='graph-based',
-                    help="Prefilter type in {} to use in pre-filtering".format(prefilters))
-
-parser.add_argument("--prefilter_threshold",
-                    type=int,
-                    default=20,
-                    help="The number of promising training facts to keep after prefiltering")
 
 parser.add_argument("--run",
                     type=str,
@@ -128,9 +115,6 @@ parser.add_argument("--embedding_model",
 parser.add_argument('--ignore_inverse', dest='ignore_inverse', default=False, action='store_true',
                     help="whether ignore inverse relation when evaluate")
 
-parser.add_argument('--train_restrain', dest='train_restrain', default=False, action='store_true',
-                    help="whether apply tail restrain when training")
-
 parser.add_argument('--specify_relation', dest='specify_relation', default=False, action='store_true',
                     help="whether specify relation when evaluate")
 
@@ -146,9 +130,6 @@ parser.add_argument('--process', type=int, default=1,
 parser.add_argument('--verify', default=False, action='store_true',
                     help="whether verify")
 
-parser.add_argument('--fit_coef', default=False, action='store_true',
-                    help="fit coefficient")
-
 parser.add_argument('--perspective', type=str, default='',
                     help="verify perspective")
 
@@ -160,10 +141,8 @@ parser.add_argument('--top_n_explanation', type=int, default=1)
 args = parser.parse_args()
 cfg = config[args.dataset][args.method]
 # coef = config[args.dataset]['coef']
-
 # coef = pd.read_csv(f'stage7/{args.method}-distribution.csv', index_col=0).loc[args.dataset].to_dict()
 
-args.restrain_dic = config[args.dataset].get('tail_restrain', None)
 # print(cfg)
 args.name = f"{args.method}{args.embedding_model}_{args.dataset}"
 args.already_explain_path = f"{args.output_folder}/../already_explain"
@@ -174,7 +153,6 @@ os.makedirs('stored_models', exist_ok=True)
 
 
 if not args.verify:
-    import shutil
     if args.process > 1:
         time.sleep((args.split-1)*0.5)
         if args.split == 1:
@@ -182,85 +160,17 @@ if not args.verify:
             os.makedirs(args.already_explain_path, exist_ok=True)
 
     if args.system == 'xrule':
-        # df_lock = defaultdict(threading.Lock)
-        # rv_dic = {}
-        # for rv_name in coef:
-        #     rv_para = coef[rv_name]
-        #     # create a t distribution with df = rv_para[0], loc = rv_para[1], scale = rv_para[2]
-        #     if hasattr(rv_para, '__iter__'):
-        #         rv_dic[rv_name] = stats.t(df=rv_para[0], loc=rv_para[1], scale=rv_para[2])
-        # print('rv distribution dic:', rv_dic)
         os.makedirs(f'{args.output_folder}/hyperpath', exist_ok=True)
         os.makedirs(f'{args.output_folder}/head', exist_ok=True)
         os.makedirs(f'{args.output_folder}/tail', exist_ok=True)
-        os.makedirs(f'{args.output_folder}/log', exist_ok=True)
-
-
-class CustomFormatter(logging.Formatter):
-    """override logging.Formatter to use an aware datetime object"""
-    def converter(self, timestamp):
-        dt_object = datetime.fromtimestamp(timestamp)
-        return dt_object
-
-    def formatTime(self, record, datefmt=None):
-        dt = self.converter(record.created)
-        if datefmt:
-            s = dt.strftime(datefmt)
-        else:
-            t = dt.strftime(self.default_time_format)
-            s = self.default_msec_format % (t, record.msecs)
-        return s
-    
-global_logger = logging.getLogger(__name__)
-
-outfile = f'{args.output_folder}/my_app.log'
-
-file_handler = logging.FileHandler(outfile)
-file_handler.setFormatter(CustomFormatter('%(asctime)s:%(levelname)s:%(message)s', '%H:%M:%S'))
-# StreamHandler for logging to stdout
-stream_handler = logging.StreamHandler()
-stream_handler.setFormatter(CustomFormatter('%(asctime)s:%(levelname)s:%(message)s', '%H:%M:%S'))   # .%f
-
-global_logger.addHandler(file_handler)
-# logger.addHandler(stream_handler)
-global_logger.setLevel(logging.INFO)
-
-logger_dic = {}
-def get_logger():
-    if MULTI_THREAD > 1:
-        # pid = mp.current_process().pid
-        pid = threading.get_ident()
-        if pid not in logger_dic:
-            logger = logging.getLogger(f'{__name__}.{pid}')
-            file_handler = logging.FileHandler(f'{args.output_folder}/log/my_app_{pid}.log')
-            logger.addHandler(file_handler)
-            # logger.addHandler(stream_handler)
-            logger.setLevel(logging.INFO)
-            logger_dic[pid] = logger
-        return logger_dic[pid]
-    return global_logger
-
-
-def log(s, warning=False):
-    if warning:
-        ech(s)
-    else:
-        get_logger().info(s)
 
 def ech(s):
-    s = '='*10 + s + '='*10
+    s = f'## {s} ({datetime.now().strftime("%H:%M:%S")})'
     click.echo(click.style(s, 'yellow'))
-    get_logger().warning(s)
-
 
 # load the dataset and its training samples
 ech(f"Loading dataset {args.dataset}...")
 dataset = Dataset(name=args.dataset, separator="\t", load=True, args=args)
-try:
-    tail_restrain = dataset.tail_restrain
-except:
-    tail_restrain = None
-args.tail_restrain = tail_restrain
 
 ech("Initializing LP model...")
 epoches = cfg['Ep'] # // 2
@@ -350,6 +260,7 @@ elif isinstance(model, TransE):
 else:
     kelpie_optimizer_class = KelpieMultiClassNLLOptimizer
 kelpie_model_class = model.kelpie_model_class()
+prediction2concerning_entities = {}
 
 
 def sigmoid(x):
@@ -413,8 +324,12 @@ def extract_performances_on_embeddings(trainable_entities, embedding: torch.Tens
     new_model.start_post_train(trainable_indices=trainable_entities, init_tensor=embedding)
     if grad:
         new_model.eval()
-        return new_model.calculate_grad(prediction)
-    return extract_performances(new_model, prediction)
+        ret = new_model.calculate_grad(prediction)
+    ret = extract_performances(new_model, prediction)
+
+    del new_model
+    torch.cuda.empty_cache()
+    return ret
 
 
 def extract_samples_with_entity(samples, entity_id):
@@ -450,7 +365,7 @@ def get_path_entities(prediction, path):
         target = triple[2] if triple[0] == last_entity_on_path else triple[0]
         path_entities.append(target)
         last_entity_on_path = target
-    return path_entities
+    return tuple(path_entities)
 
 def update_df(df, dic, save_path):
     # df_lock[save_path].acquire()
@@ -510,12 +425,22 @@ class Explanation:
     _kelpie_dataset_cache = OrderedDict()
     _kelpie_init_tensor_cache = {}
 
+    @staticmethod
+    def empty_cache():
+        for dataset in Explanation._kelpie_dataset_cache.values():
+            del dataset
+        for tensor in Explanation._kelpie_init_tensor_cache.values():
+            del tensor
+        Explanation._kelpie_dataset_cache = OrderedDict()
+        Explanation._kelpie_init_tensor_cache = {}
+        torch.cuda.empty_cache()
+
     def __init__(self, 
                  prediction: Tuple[Any, Any, Any],
                  samples_to_remove: List[Tuple],
                  trainable_entities: List, *args, **kwargs):
         
-        log(f"Create Explanation on sample: {prediction}, trainable: {trainable_entities}, removing({len(samples_to_remove)}): {samples_to_remove}")
+        print(f"Create Explanation on sample: {prediction}, trainable: {trainable_entities}, removing({len(samples_to_remove)}): {samples_to_remove}")
         self.prediction = prediction
         self.samples_to_remove = list(samples_to_remove)
         self.trainable_entities = trainable_entities
@@ -523,7 +448,7 @@ class Explanation:
 
         self.original_entity_id.sort()
         self.original_entity_id = tuple(self.original_entity_id)
-        self.identifier = (prediction, self.original_entity_id)
+        self.identifier = prediction + self.original_entity_id
 
         for entity in trainable_entities:
             assert entity in prediction
@@ -565,7 +490,7 @@ class Explanation:
         }
 
         update_df(self.df, self.ret, 'my_explaination.csv')
-        log(f"MyExplanation created. {str(self.ret)}")
+        print(f"MyExplanation created. {str(self.ret)}")
 
     
     def _get_kelpie_init_tensor(self):
@@ -605,8 +530,11 @@ class Explanation:
         optimizer.epochs = hyperparameters[RETRAIN_EPOCHS]
         t = time.time()
         optimizer.train(train_samples=self.kelpie_dataset.kelpie_train_samples)
-        print(f"Kelpie training time: {time.time() - t}")
+        print(f"* base post train training time: {time.time() - t}, #sample: {len(self.kelpie_dataset.kelpie_train_samples)}")
         self._base_pt_model_results[self.identifier] = self.extract_performance_with_embedding(kelpie_model, calculate_grad=True)
+        
+        del kelpie_model
+        torch.cuda.empty_cache()
         return self._base_pt_model_results[self.identifier]
 
 
@@ -618,33 +546,36 @@ class Explanation:
                                                 hyperparameters=hyperparameters,
                                                 verbose=False)
         optimizer.epochs = hyperparameters[RETRAIN_EPOCHS]
-        t = time.time()
-
+    
         self.kelpie_dataset.remove_training_samples(self.samples_to_remove)
+        t = time.time()
         optimizer.train(train_samples=self.kelpie_dataset.kelpie_train_samples)
+        print(f"* post train training time: {time.time() - t}, #sample: {len(self.kelpie_dataset.kelpie_train_samples)}")
         self.kelpie_dataset.undo_last_training_samples_removal()
+        ret = self.extract_performance_with_embedding(kelpie_model)
 
-        print(f"Kelpie training time: {time.time() - t}")
-        return self.extract_performance_with_embedding(kelpie_model)
+        del kelpie_model
+        torch.cuda.empty_cache()
+        return ret
     
 
     def _get_kelpie_dataset(self):
         """
         Return the value of the queried key in O(1).
         Additionally, move the key to the end to show that it was recently used.
-
-        :param original_entity_id:
-        :return:
         """
-        if self.original_entity_id not in self._kelpie_dataset_cache:
-            self._kelpie_dataset_cache[self.original_entity_id] = XruleDataset(dataset, self.original_entity_id)
-            self._kelpie_dataset_cache.move_to_end(self.original_entity_id)
+        if self.identifier not in self._kelpie_dataset_cache:
+            self._kelpie_dataset_cache[self.identifier] = XruleDataset(dataset, self.original_entity_id, prediction2concerning_entities[self.prediction])
+            self._kelpie_dataset_cache.move_to_end(self.identifier)
 
             if len(self._kelpie_dataset_cache) > self._kelpie_dataset_cache_size:
                 self._kelpie_dataset_cache.popitem(last=False)
-        return self._kelpie_dataset_cache[self.original_entity_id]
+                oldest_key, oldest_value = self._kelpie_dataset_cache.popitem(last=False)
+                # release resources associated with oldest_value
+                del oldest_value
+                torch.cuda.empty_cache()
 
-
+        return self._kelpie_dataset_cache[self.identifier]
     
 class NumpyEncoder(json.JSONEncoder):
     """ Special json encoder for numpy types """
@@ -662,120 +593,6 @@ class NumpyEncoder(json.JSONEncoder):
         elif isinstance(obj, (numpy.bool_,)):
             return bool(obj)
         return json.JSONEncoder.default(self, obj)
-
-
-class Path:
-    paths = []
-    rel_df = pd.DataFrame()
-
-    def __init__(self, prediction, path, available_samples) -> None:
-        """Constructor for Path
-
-        Args:
-            prediction (_type_): _description_
-            path (_type_): a list of triples connecting head and tail. The triples should be in the same order as the path
-        """
-        self.prediction = prediction
-        self.path = path
-        self.path_entities = self.get_path_entities()
-        self.available_samples = available_samples
-        self.build_explanations()
-        self.explanations = [self.head_exp, self.tail_exp, self.path_exp]
-
-        log(f'path relevance: {[exp.relevance for exp in self.explanations]}')
-
-        self.save_to_local()
-
-    @property
-    def triples(self):
-        return self.path
-
-    def save_to_local(self):
-        self.paths.append(self)
-        self.ret = {
-            'prediction': self.prediction,
-            'path': self.path,
-            'head_rel': self.head_exp.relevance,
-            'tail_rel': self.tail_exp.relevance,
-            'rel': self.path_exp.relevance,
-        }
-        for p in [2, float('inf')]:
-            self.ret.update({
-                f'delta_h_{p}': self.head_exp.ret[f'delta_{p}'],
-                f'delta_t_{p}': self.tail_exp.ret[f'delta_{p}'],
-                f'delta_{p}': self.path_exp.ret[f'delta_{p}'],
-                f'partial_{p}': (self.head_exp.ret[f'partial_{p}'] + self.tail_exp.ret[f'partial_{p}'])/2,
-                f'partial_t_{p}': (self.head_exp.ret[f'partial_t_{p}'] + self.tail_exp.ret[f'partial_t_{p}'])/2,
-                f'partial_h_{p}': (self.head_exp.ret[f'partial_h_{p}'] + self.tail_exp.ret[f'partial_h_{p}'])/2,
-                'head_exp': self.head_exp.ret,
-                'tail_exp': self.tail_exp.ret,
-                'path_exp': self.path_exp.ret,
-            })
-        update_df(self.rel_df, self.ret,'rel_df.csv')
-
-        lis = [path.json() for path in self.paths]
-        with open(f'{args.output_folder}/paths.json', 'w') as f:
-            json.dump(lis, f, cls=NumpyEncoder, indent=4)
-
-    def get_path_entities(self):
-        return get_path_entities(self.prediction, self.path)
-
-    def build_explanations(self):
-        head, rel, tail = self.prediction
-        self.head_exp = Explanation(self.prediction, [self.path[0]], [head], self.available_samples)
-        self.tail_exp = Explanation(self.prediction, [self.path[-1]], [tail], self.available_samples)
-        self.path_exp = Explanation(self.prediction, [self.path[0], self.path[-1]], [head, tail], self.available_samples)
-
-    def json(self):
-        return {
-            'prediction': self.prediction,
-            'facts': [dataset.sample_to_fact(triple, True) for triple in self.triples],
-            'path': self.path,
-            'head_exp': self.head_exp.ret,
-            'tail_exp': self.tail_exp.ret,
-            'path_exp': self.path_exp.ret,
-            'relevance': [exp.relevance for exp in self.explanations],
-            'ret': self.ret
-        }
-        
-
-class SuperPath(Path):
-    def __init__(self, prediction, path, available_samples) -> None:
-        super().__init__(prediction, path, available_samples)
-
-    def get_path_entities(self):
-        return self.path
-
-    @property
-    def triples(self):
-        return self.all_samples
-
-    def build_explanations(self):
-        head, rel, tail = self.prediction
-        first_hop = self.path[1]
-        last_hop = self.path[-2]
-        print('Constructing super path:  first_hop', first_hop, 'last_hop', last_hop, 'tail', tail)
-        print('last_hop samples', len(self.available_samples[last_hop]), list(self.available_samples[last_hop])[:10])
-        print('tail samples', len(self.available_samples[tail]), list(self.available_samples[tail])[:10])
-        
-        first_hop_samples = self.available_samples[head] & self.available_samples[first_hop]
-        last_hop_samples = self.available_samples[tail] & self.available_samples[last_hop]
-
-        for sample in last_hop_samples:
-            print(sample, tail, last_hop)
-            assert sample[0] in [tail, last_hop] and sample[2] in [tail, last_hop]
-
-        self.all_samples = set()
-        for i in range(len(self.path)-1):
-            entity = self.path[i]
-            for triple in self.available_samples[entity]:
-                if self.path[i+1] in [triple[0], triple[2]]:
-                    self.all_samples.add(triple)
-
-        self.head_exp = Explanation(self.prediction, first_hop_samples, [head], self.available_samples)
-        self.tail_exp = Explanation(self.prediction, last_hop_samples, [tail], self.available_samples)
-        self.path_exp = Explanation(self.prediction, first_hop_samples | last_hop_samples, [head, tail], self.available_samples)
-        
     
 class Generator:
     generator_df = pd.DataFrame()
@@ -793,7 +610,7 @@ class Generator:
         self.last_upbound = np.inf
         self.invalid_objects = set()
         self.available_samples = available_samples
-        log(f'generator initialized with {len(self.objects)} #objects, {len(self.available_samples)} #entities')
+        print(f'generator initialized with {len(self.objects)} #objects, {len(self.available_samples)} #entities')
 
     def __len__(self):
         return len(self.upbound_dic)
@@ -811,33 +628,33 @@ class Generator:
             _type_: _description_
         """
         if self.empty():
-            log('queue is empty, finish')
+            print('queue is empty, finish')
             return True
-        if len(self.windows) < self.window_size * 5:
-            log(f'window size: {len(self.windows)} < {self.window_size * 5}, continue')
+        if len(self.windows) < self.window_size * 4:
+            print(f'window size: {len(self.windows)} < {self.window_size * 4}, continue')
             return False
         
         relu_windows = [max(0, x) for x in self.windows[-self.window_size:]]
         if max(relu_windows) <= DEFAULT_VALID_THRESHOLD:
-            log('no valid relevance in the recent window, finish')
+            print('no valid relevance in the recent window, finish')
             return True
         
         if relu_windows[-1] > DEFAULT_VALID_THRESHOLD:
-            log(f'last window: {relu_windows[-1]} > {DEFAULT_VALID_THRESHOLD}, continue')
+            print(f'last window: {relu_windows[-1]} > {DEFAULT_VALID_THRESHOLD}, continue')
             return False
         
         # if self.last_upbound > DEFAULT_VALID_THRESHOLD and len(self.windows) < self.window_size * 10:
-        #     log(f'upbound: {self.last_upbound} > {DEFAULT_VALID_THRESHOLD} and window size: {len(self.windows)} < {self.window_size * 10}, continue')
+        #     print(f'upbound: {self.last_upbound} > {DEFAULT_VALID_THRESHOLD} and window size: {len(self.windows)} < {self.window_size * 10}, continue')
         #     return False
         
         prob = mean(relu_windows) / max(self.windows)
         # generate a random number between 0 and 1
         r = random.random() * 2 - 1
         if r > prob:
-            log(f'random: {r} > prob: {prob}, finish')
+            print(f'random: {r} > prob: {prob}, finish')
             return True
         
-        log(f'random: {r} <= prob: {prob}, continue')
+        print(f'random: {r} <= prob: {prob}, continue')
         return False
     
     def generate(self):
@@ -862,8 +679,22 @@ class Generator:
 
 
 
+def filter_samples(all_samples, concerning_entities):
+    valid_samples = []
+    for sample in all_samples:
+        if sample[0] in concerning_entities or sample[2] in concerning_entities:
+            valid_samples.append(sample)
+        else:
+            print('! sample not valid', sample)
+    return valid_samples
+
 class OneHopGenerator(Generator):
     NoSplitThresh = 30
+
+    def __del__(self):
+        for exp in self.explanations.values():
+            del exp
+        torch.cuda.empty_cache()
 
     df = pd.DataFrame()
     def __init__(self, perspective, prediction, neighbors, available_samples=None) -> None:
@@ -917,7 +748,7 @@ class OneHopGenerator(Generator):
                     group_id = i + k * m
                     group = group_id_to_elements[group_id]
                     
-                    log(f'========group({group_id}): {len(group)} {group}')
+                    print(f'========group({group_id}): {len(group)} {group}')
                     if len(group) == 0:
                         continue
                     exp = self.calculate_group(group)
@@ -935,16 +766,16 @@ class OneHopGenerator(Generator):
                     #     break
                 
                 if len(self.valid_objects()) <= self.NoSplitThresh:   
-                    log(f'valid objects: {len(self.valid_objects())} <= {self.NoSplitThresh}, break')
+                    print(f'valid objects: {len(self.valid_objects())} <= {self.NoSplitThresh}, break')
                     break
                 objects = new_objects
             
             for neighbor in self.valid_objects():
                 self.calculate_upbound(neighbor)
             # self.neighbors.sort(key=lambda x: self.calculate_upbound(x), reverse=True)
-            log(f'make groups completed, upbound ({len(self.upbound_dic)}/{len(self.objects)} valid)', True)
+            print(f'make groups completed, upbound ({len(self.upbound_dic)}/{len(self.objects)} valid)', True)
         
-        log(f"upbound_dic: {self.upbound_dic}")
+        print(f"upbound_dic: {self.upbound_dic}")
         self.valid_count = len(self.upbound_dic)
     
 
@@ -970,7 +801,7 @@ class OneHopGenerator(Generator):
             ret = min(ret, upbound)
         
         # if ret < DEFAULT_VALID_THRESHOLD:
-        #     log(f'upbound on {neighbor}: {ret} too small, skip')
+        #     print(f'upbound on {neighbor}: {ret} too small, skip')
         #     self.invalid_objects.add(neighbor)
         #     return
         
@@ -980,10 +811,10 @@ class OneHopGenerator(Generator):
     def generate(self):
         """return one top explanation
         """
-        log('*' * 10 + f'{self.perspective} generate (len: {len(self)})')
+        print('*' * 10 + f'{self.perspective} generate (len: {len(self)})')
 
         if self.finished():
-            log(f'No more neighbors, finished')
+            print(f'No more neighbors, finished')
             return None
         
         neighbor = max(self.upbound_dic, key=self.upbound_dic.get)
@@ -991,12 +822,12 @@ class OneHopGenerator(Generator):
 
         ##########################################################
         # if -neg_upbound < self.valid_threshold:
-        #     log(f'neighbor upbound not valid, finished')
+        #     print(f'neighbor upbound not valid, finished')
         #     return None
         assert neighbor not in self.explanations
 
 
-        log(f'generate explanation for {neighbor} ({self.perspective}, upbound: {self.last_upbound})')
+        print(f'generate explanation for {neighbor} ({self.perspective}, upbound: {self.last_upbound})')
         if len(self.objects) <= self.NoSplitThresh:
             exp = self.ele2exp[neighbor][0]
         else:
@@ -1020,7 +851,7 @@ class OneHopGenerator(Generator):
 
         ##########################################################
         # if exp.relevance < DEFAULT_VALID_THRESHOLD:
-        #     log(f'neighbor {neighbor} relevance {exp.relevance} too small, generate another time')
+        #     print(f'neighbor {neighbor} relevance {exp.relevance} too small, generate another time')
         #     return self.generate()
         
         with open(f'{args.output_folder}/{self.perspective}/{self.prediction}.json', 'w') as f:
@@ -1028,7 +859,6 @@ class OneHopGenerator(Generator):
         
         return neighbor, exp
             
-    
     def json(self):
         ret = {}
         for neighbor, exp in self.explanations.items():
@@ -1046,7 +876,9 @@ class OneHopGenerator(Generator):
         all_samples = set()
         for neighbor in group:
             all_samples |= self.available_samples[neighbor] & self.available_samples[self.entity]
-        log(f'({self.perspective}) #group: {len(group)}, #samples: {len(all_samples)}, group: {group}')
+        all_samples = filter_samples(all_samples, prediction2concerning_entities[self.prediction])
+        
+        print(f'({self.perspective}) #group: {len(group)}, #samples: {len(all_samples)}, group: {group}')
         exp = Explanation(self.prediction, list(all_samples), [self.entity], self.available_samples)
 
         lab = self.perspective[0]
@@ -1056,7 +888,7 @@ class OneHopGenerator(Generator):
         upbound = rel_group + delta_group # * coef[f'g_{lab}']
 
         if upbound < DEFAULT_VALID_THRESHOLD:
-            log(f'invalid group: {group}, {upbound} too small, skip')
+            print(f'invalid group: {group}, {upbound} too small, skip')
             for neighbor in group:
                 self.invalid_objects.add(neighbor)
         else:
@@ -1067,6 +899,14 @@ class OneHopGenerator(Generator):
 
 class PathGenerator(Generator):
     df = pd.DataFrame()
+
+    def __del__(self):
+        for exp in self.head_explanations.values():
+            del exp
+        for exp in self.tail_explanations.values():
+            del exp
+        torch.cuda.empty_cache()
+
     def __init__(self, prediction, hyperpaths, available_samples=None) -> None:
         super().__init__(prediction, hyperpaths, 'path', available_samples)
         self.head_explanations = {}
@@ -1109,15 +949,6 @@ class PathGenerator(Generator):
         Delta_t = partial['partial_h_2'] * head_exp.ret['delta_2']
         Delta = partial['partial_2'] * head_exp.ret['delta_2'] * tail_exp.ret['delta_2']
 
-        # point = (DEFAULT_VALID_THRESHOLD - head_exp.relevance) / Delta_h
-        # prob *= 1 - rv_dic['xi_h'].cdf(point)
-
-        # point = (DEFAULT_VALID_THRESHOLD - tail_exp.relevance) / Delta_t
-        # prob *= 1 - rv_dic['xi_t'].cdf(point)
-
-        # point = (DEFAULT_VALID_THRESHOLD  - head_exp.relevance - tail_exp.relevance) / Delta
-        # prob *= 1 - rv_dic['xi'].cdf(point)
-
         head_bound = head_exp.relevance + Delta_h # * coef['k_h']
         tail_bound = tail_exp.relevance + Delta_t # * coef['k_t']
 
@@ -1129,7 +960,7 @@ class PathGenerator(Generator):
 
         upbound = min(head_bound, tail_bound, bound)
         # if upbound < DEFAULT_VALID_THRESHOLD:
-        #     log(f'upbound on {hyperpath}: {upbound} too small, skip')
+        #     print(f'upbound on {hyperpath}: {upbound} too small, skip')
         #     return
         
         # 为了增加hyperpath的多样性，如果已经有了5个相同头或尾且upbound更高的hyperpath，就不再加入，否则替换
@@ -1169,10 +1000,10 @@ class PathGenerator(Generator):
         return one top explanation
         You should examine whether the Generator is empty before calling this function
         """
-        log('*' * 10 + f'path generate (len: {len(self)})')
+        print('*' * 10 + f'path generate (len: {len(self)})')
 
         if self.finished():
-            log(f'No more hyperpath, finished')
+            print(f'No more hyperpath, finished')
             return None
         
         hyperpath = max(self.upbound_dic, key=self.upbound_dic.get)
@@ -1183,20 +1014,22 @@ class PathGenerator(Generator):
         ##########################################################
         # even if the upbound is invalid / relevance, we still need to calculate the explanation
         # if -neg_upbound < self.valid_threshold:
-        #     log(f'hyperpath upbound not valid, finished')
+        #     print(f'hyperpath upbound not valid, finished')
         #     return None
         
         head, relation, tail = self.prediction
         head_exp = self.head_explanations[hyperpath[1]]
         tail_exp = self.tail_explanations[hyperpath[-2]]
 
-        log(f'generate explanation for {hyperpath} (upbound: {self.last_upbound})')
+        print(f'generate explanation for {hyperpath} (upbound: {self.last_upbound})')
         
-        all_samples_to_remove = set()
-        for i in range(len(hyperpath) - 1):
-            a = hyperpath[i]
-            b = hyperpath[i+1]
-            all_samples_to_remove |= self.available_samples[a] & self.available_samples[b]
+        # all_samples = set()
+        # for i in range(len(hyperpath) - 1):
+        #     a = hyperpath[i]
+        #     b = hyperpath[i+1]
+        #     all_samples |= self.available_samples[a] & self.available_samples[b]
+        # all_samples = filter_samples(all_samples, prediction2concerning_entities[self.prediction])
+
         exp = Explanation(self.prediction, head_exp.samples_to_remove + tail_exp.samples_to_remove, [head, tail], self.available_samples)
 
         assert self.explanations[hyperpath] == 1
@@ -1207,7 +1040,7 @@ class PathGenerator(Generator):
         # value tensor of shape [400] cannot be broadcast to indexing result of shape [2, 200]
         # approx_embedding = torch.stack([head_exp.pt_embeddings[0], tail_exp.pt_embeddings[-1]])
         # approx_score = extract_performances_on_embeddings([head,tail], approx_embedding, self.prediction)[0]
-        # log(f'approx_score: {approx_score}, base_score: {head_exp.base_score}/{tail_exp.base_score}')
+        # print(f'approx_score: {approx_score}, base_score: {head_exp.base_score}/{tail_exp.base_score}')
         # self.approx_rel_dic[hyperpath] = (head_exp.base_score + tail_exp.base_score)/2 - approx_score
 
         update_df(self.df, {
@@ -1217,21 +1050,19 @@ class PathGenerator(Generator):
             'relevance': exp.relevance,
             'head_rel': head_exp.relevance,
             'tail_rel': tail_exp.relevance,
-            'triples': all_samples_to_remove,
+            'triples': head_exp.samples_to_remove + tail_exp.samples_to_remove,
             # 'approx_rel': self.approx_rel_dic[hyperpath],
         }, 'hyperpath.csv')
 
         ##########################################################
         # if exp.relevance < DEFAULT_VALID_THRESHOLD:
-        #     log(f'hyperpath {hyperpath} relevance {exp.relevance} too small, generate another time')
+        #     print(f'hyperpath {hyperpath} relevance {exp.relevance} too small, generate another time')
         #     return self.generate()
         
         with open(f'{args.output_folder}/hyperpath/{self.prediction}.json', 'w') as f:
             json.dump(self.json(), f, indent=4, cls=NumpyEncoder)
-
         return hyperpath, exp
 
-    
     def json(self):
         ret = {}
         for hyperpath, exp in self.explanations.items():
@@ -1255,7 +1086,6 @@ valid_hops_df = pd.DataFrame()
 valid_exp_df = pd.DataFrame()
 exp_info_df = pd.DataFrame()
 hop_df = pd.DataFrame()
-prefilter = args.prefilter
 relevance_threshold = args.relevance_threshold
 
 def triple2str(triple):

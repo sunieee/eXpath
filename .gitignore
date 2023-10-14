@@ -4,7 +4,6 @@ __pycache__/
 
 ### Kelpie paths not to add to git for the time being
 stored_models
-reproducibility_images
 reproducibility.pdf
 major_revision/
 

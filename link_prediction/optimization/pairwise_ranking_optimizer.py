@@ -6,7 +6,7 @@ from link_prediction.regularization.regularizers import L2
 from link_prediction.models.model import Model, BATCH_SIZE, LEARNING_RATE, EPOCHS, MARGIN, NEGATIVE_SAMPLES_RATIO, \
     REGULARIZER_WEIGHT, KelpieModel
 from link_prediction.optimization.optimizer import Optimizer
-
+import time
 
 class PairwiseRankingOptimizer(Optimizer):
     """

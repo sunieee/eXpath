@@ -10,6 +10,8 @@ import pandas as pd
 import numpy as np
 import math
 from datetime import datetime
+import re
+from tqdm import tqdm
 
 from link_prediction.models.model import *
 from link_prediction.evaluation.evaluation import Evaluator
@@ -114,18 +116,22 @@ if args.system != 'xrule':
     from data_poisoning import DataPoisoning
     from criage import Criage
     if args.system == "kelpie":
-        kelpie = Kelpie(model=model, dataset=dataset, hyperparameters=hyperparameters, prefilter_type=prefilter,
+        kelpie = Kelpie(model=model, dataset=dataset, hyperparameters=hyperparameters,
                         relevance_threshold=relevance_threshold)
     elif args.system == "data_poisoning":
-        kelpie = DataPoisoning(model=model, dataset=dataset, hyperparameters=hyperparameters, prefilter_type=prefilter)
+        kelpie = DataPoisoning(model=model, dataset=dataset, hyperparameters=hyperparameters)
     elif args.system == "criage":
         kelpie = Criage(model=model, dataset=dataset, hyperparameters=hyperparameters)
     elif args.system == "k1":
-        kelpie = Kelpie(model=model, dataset=dataset, hyperparameters=hyperparameters, prefilter_type=prefilter,
+        kelpie = Kelpie(model=model, dataset=dataset, hyperparameters=hyperparameters,
                         relevance_threshold=relevance_threshold, max_explanation_length=1)
     else:
-        kelpie = Kelpie(model=model, dataset=dataset, hyperparameters=hyperparameters, prefilter_type=prefilter,
+        kelpie = Kelpie(model=model, dataset=dataset, hyperparameters=hyperparameters,
                         relevance_threshold=relevance_threshold)
+else:
+    kelpie_folder = re.sub(r'(/\d+)', '', args.output_folder.replace('xrule', 'kelpie'))
+    kelpie_df = pd.read_csv(os.path.join(kelpie_folder, 'output_end_to_end_kelpie(top1).csv'))
+    kelpie_df.set_index('prediction', inplace=True)
 
 
 def explain_sample_kelpie(prediction):
@@ -160,78 +166,131 @@ def explain_sample_kelpie(prediction):
 def explain_sample(prediction):
     # if ignore_triple(fact):
     #     continue
+    ech('cuda summary:')
+    print(torch.cuda.memory_summary())
+    Explanation.empty_cache()
     head, relation, tail = prediction
     i = testing_samples.index(prediction)
+    print()
     ech(f"Explaining fact {i}/{len(testing_samples)}: {prediction}  {dataset.sample_to_fact(prediction, True)}")
-    # log(dataset.entity_name_2_id)
+    # print(dataset.entity_name_2_id)
     score, best, rank = extract_performances(model, prediction)
     
     ##########################################################
     # generate explanations even if the prediction rank > 1
     # if rank > 1:
-    #     log(f'{dataset.sample_to_fact(prediction, True)} is not a valid prediction (rank={rank}, score={score}). Skip')
+    #     print(f'{dataset.sample_to_fact(prediction, True)} is not a valid prediction (rank={rank}, score={score}). Skip')
     #     continue
-    log(f'rank: {rank}')
+    print(f'rank: {rank}')
     
     # path_statistic(prediction)
-    paths = dataset.find_all_path_within_k_hop(head, tail, 3)
+    all_paths = dataset.find_all_path_within_k_hop(head, tail, 3)
     # 过滤掉长度为1的路径，这种路径是一种简单的推导，不能作为解释
-    paths = [p for p in paths if len(p) > 1]
-    super_paths = set()
+    # 使用kelpie top20 facts过滤路径
+    all_paths = [p for p in all_paths if len(p) > 1]
+
+    facts = eval(kelpie_df.loc[str(prediction), 'facts'])
+    print('kelpie facts:', facts)
+    facts = sorted(facts, key=lambda x: x[1], reverse=True)
+    fact2score = defaultdict(float)
+    fact2mrr = defaultdict(float)
+    for ix, f in enumerate(facts):
+        for fact in f[0]:
+            fact2score[fact] += f[1]
+            fact2mrr[fact] += 1 / (ix + 1)
+    
+    fact2score = sorted(fact2score.items(), key=lambda x: x[1], reverse=True)
+    fact2mrr = sorted(fact2mrr.items(), key=lambda x: x[1], reverse=True)
+
+    top_facts = set([f[0] for f in fact2score[:20]] + [f[0] for f in fact2mrr[:20]])
+    print('top facts:', top_facts)
+    top_phs = [t if h == head else h for h, r, t in top_facts]
+    print('top phs:', top_phs)
+
+    paths = []
+    hyperpaths = set()
     available_samples = defaultdict(set)
     phs = {}
     pts = {}
-    for p in paths:
-        super = get_path_entities(prediction, p)
-        if super[1] in phs:
-            phs[super[1]] = min(len(super) - 1, phs[super[1]])
+    ph_meta_dic = defaultdict(int)
+    for p in all_paths:
+        hyperpath = get_path_entities(prediction, p)
+        if hyperpath[1] not in top_phs:
+            continue
+
+        meta = tuple([t[1] for t in p])
+        if ph_meta_dic[(hyperpath[1], meta)] >= 2:
+            continue
+        ph_meta_dic[(hyperpath[1], meta)] += 1
+
+        if hyperpath[1] in phs:
+            phs[hyperpath[1]] = min(len(hyperpath) - 1, phs[hyperpath[1]])
         else:
-            phs[super[1]] = len(super) - 1
-        if super[-2] in pts:
-            pts[super[-2]] = min(len(super) - 1, pts[super[-2]])
+            phs[hyperpath[1]] = len(hyperpath) - 1
+        if hyperpath[-2] in pts:
+            pts[hyperpath[-2]] = min(len(hyperpath) - 1, pts[hyperpath[-2]])
         else:
-            pts[super[-2]] = len(super) - 1
-        super_paths.add(tuple(super))
+            pts[hyperpath[-2]] = len(hyperpath) - 1
+        hyperpaths.add(hyperpath)
+        paths.append(hyperpath)
         for t in p:
             # print(t, t[0], t[2])
             available_samples[t[0]].add(t)
             available_samples[t[2]].add(t)
-    ech(f'all related entities on path: {len(available_samples)}, #phs: {len(phs)}, #pts: {len(pts)}, #paths: {len(paths)}, #super_paths: {len(super_paths)}')
+    ech(f'all related entities on path')
+    print(f'#samples: {len(available_samples)}, #phs: {len(phs)}, #pts: {len(pts)}, #all_paths: {len(all_paths)}, #paths: {len(paths)}, #hyperpaths: {len(hyperpaths)}')
+    print('phs:', phs)
+    print('pts:', pts)
+    print('hyperpaths:', hyperpaths)
+    print('available_samples:', available_samples)
+    prediction2concerning_entities[prediction] = phs.keys() | pts.keys()
+    print('concerning_entities:', prediction2concerning_entities[prediction])
     # random_explain_path(super_paths)
     # random_explain_group(phs, pts, prediction)
     # explain_all_path(super_paths, prediction, phs, pts)
 
     ech('Creating generators')
-    head_generator = OneHopGenerator('head', prediction, phs, available_samples=available_samples)
-    tail_generator = OneHopGenerator('tail', prediction, pts, available_samples=available_samples)
-    path_generator = PathGenerator(prediction, super_paths, available_samples=available_samples)
+    # tail_generator = OneHopGenerator('tail', prediction, pts, available_samples=available_samples)
+    path_generator = PathGenerator(prediction, hyperpaths, available_samples=available_samples)
 
-    ech('Start generating...')
-    while not head_generator.finished():
-        pair = head_generator.generate()
-        if pair is not None:
-            path_generator.renew_head(pair[0], pair[1])
-    head_generator.close()
+    ech('Calculate head relevance')
+    for ph in phs:
+        exp = Explanation(prediction, available_samples[ph] & available_samples[head], [head])
+        path_generator.renew_head(ph, exp)
 
-    while not tail_generator.finished():
-        pair = tail_generator.generate()
-        if pair is not None:
-            path_generator.renew_tail(pair[0], pair[1])
-    tail_generator.close()
+    ech('Calculate tail relevance')
+    # while not tail_generator.finished():
+    #     pair = tail_generator.generate()
+    #     if pair is not None:
+    #         path_generator.renew_tail(pair[0], pair[1])
+    # tail_generator.close()
 
+    # random select 50 pts
+    pts = list(pts.keys())
+    random.shuffle(pts)
+    pts = pts[:50]
+    for pt in pts:
+        exp = Explanation(prediction, available_samples[pt] & available_samples[tail], [tail])
+        path_generator.renew_tail(pt, exp)
+
+    ech('Calculate path relevance')
     while not path_generator.finished():
         pair = path_generator.generate()
     path_generator.close()
 
+    # del tail_generator
+    del path_generator
 
-def explain_one(func):
+def explain_one(func, pbar=None):
     for sample in testing_samples:
         if str(sample) not in os.listdir(args.already_explain_path):
             open(f'{args.already_explain_path}/{sample}', 'w').close()
             func(sample)
+            if pbar:
+                pbar.n = len(os.listdir(args.already_explain_path))
+                pbar.refresh()
             return True
     return False
-
 
 if args.system == 'xrule':
     func = explain_sample
@@ -241,10 +300,16 @@ else:
 
 if args.process > 1:
     ech(f'Splitting testing facts: {args.split}/{args.process}')
+    
+    # 初始化进度条
+    pbar = tqdm(total=len(testing_samples), initial=0, desc="Explaining")
+
     cnt = 0
-    while explain_one(func):
+    while explain_one(func, pbar):
         cnt += 1 
         ech(f'Explained {cnt} facts')
+    
+    pbar.close()
     ech(f'All facts explained, total: {cnt}')
 else:
     for i, sample in enumerate(testing_samples):
@@ -258,48 +323,3 @@ else:
 #     pool.map(explain_fact, testing_facts)
 #     pool.close()
     
-
-'''
-RuntimeError: CUDA error: an illegal memory access was encountered
-CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
-For debugging consider passing CUDA_LAUNCH_BLOCKING=1.
-
-
-File "/home/sy/2023/Kelpie-copy/utils.py", line 560, in build
-    explanation.calculate_relevance()
-  File "/home/sy/2023/Kelpie-copy/utils.py", line 625, in calculate_relevance
-    pt_embeddings = pt_training()
-  File "/home/sy/2023/Kelpie-copy/utils.py", line 713, in pt_training_multiple
-    return self.post_training_multiple(self.pt_train_samples, early_stop=True)
-  File "/home/sy/2023/Kelpie-copy/utils.py", line 721, in post_training_multiple
-    results.append(self.post_training_save(training_samples))
-  File "/home/sy/2023/Kelpie-copy/utils.py", line 796, in post_training_save
-    optimizer.train(train_samples=post_train_samples, post_train=True)
-  File "/home/sy/2023/Kelpie-copy/link_prediction/optimization/bce_optimizer.py", line 81, in train
-    self.epoch(er_vocab=er_vocab, er_vocab_pairs=er_vocab_pairs, batch_size=self.batch_size, post_train=post_train)
-  File "/home/sy/2023/Kelpie-copy/link_prediction/optimization/bce_optimizer.py", line 130, in epoch
-    batch, targets = self.extract_batch(er_vocab=er_vocab,
-  File "/home/sy/2023/Kelpie-copy/link_prediction/optimization/bce_optimizer.py", line 113, in extract_batch
-    return torch.tensor(batch).cuda(), torch.FloatTensor(targets).cuda()
-RuntimeError: CUDA error: an illegal memory access was encountered
-Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
-
-
-  File "/home/sy/2023/Kelpie-copy/link_prediction/optimization/bce_optimizer.py", line 81, in train
-    self.epoch(er_vocab=er_vocab, er_vocab_pairs=er_vocab_pairs, batch_size=self.batch_size, post_train=post_train)
-  File "/home/sy/2023/Kelpie-copy/link_prediction/optimization/bce_optimizer.py", line 141, in epoch
-    l = self.step_on_batch(batch, targets, post_train=post_train)
-  File "/home/sy/2023/Kelpie-copy/link_prediction/optimization/bce_optimizer.py", line 185, in step_on_batch
-    loss.backward()
-  File "/home/sy/anaconda3/envs/torch/lib/python3.9/site-packages/torch/_tensor.py", line 487, in backward
-    torch.autograd.backward(
-  File "/home/sy/anaconda3/envs/torch/lib/python3.9/site-packages/torch/autograd/__init__.py", line 200, in backward
-    Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
-RuntimeError: CUDA error: an illegal memory access was encountered
-Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
-
-pkill -f "explain.py"
-
-{'MOF-3000': {'tail_restrain': {'hasColor': 'M0->C0', 'hasHabit': 'M0->H0', 'hasPaper': 'M0->P0', 'hasJournal': 'M0->J0', 'hasAuthor': 'M0->A0', 'hasKernel': 'M0,P1,B0->K1,K2,K3', 'subKernel': 'K2,K3->K1,K2', 'hasBond': 'M0,P1->B0', 'hasSolvent': 'M0->ref', 'hasLinker': 'M0->ref', 'hasMetal': 'M0->ref', 'hasOperation': 'M0->O0', 'hasMethod': 'M0->M1'}, 'TransE': {'D': 50, 'LR': 0.0002, 'B': 4096, 'Ep': 200, 'gamma': 2, 'N': 5, 'Opt': 'Adam', 'Reg': 0}, 'ComplEx': {'D': 500, 'LR': 0.1, 'B': 2000, 'Ep': 50, 'Opt': 'Adagrad', 'Reg': 0.05}, 'ConvE': {'D': 200, 'LR': 0.003, 'B': 256, 'Ep': 50, 'Decay': 0.995, 'epsilon': 0.1, 'Drop': {'in': 0.2, 'h': 0.3, 'feat': 0.2}}, 'coef': {'k_h': 0.00096, 'k_t': 0, 'k': 0.0083, 'g_h': -0.036, 'g_t': -0.011}}, 'FB15k-237': {'TransE': {'D': 50, 'LR': 0.0004, 'B': 2048, 'Ep': 100, 'gamma': 5, 'N': 15, 'Opt': 'Adam', 'Reg': 1}, 'ComplEx': {'D': 1000, 'LR': 0.1, 'B': 1000, 'Ep': 50, 'Opt': 'Adagrad', 'Reg': 0.05}, 'ConvE': {'D': 200, 'LR': 0.003, 'B': 128, 'Ep': 50, 'Decay': 0.995, 'epsilon': 0.1, 'Drop': {'in': 0.2, 'h': 0.3, 'feat': 0.2}}, 'coef': {'k_h': 0.026, 'k_t': 6.9e-05, 'k': 0.11, 'g_h': -0.029, 'g_t': -0.011}}, 'WN18': {'TransE': {'D': 50, 'LR': 0.0002, 'B': 2048, 'Ep': 200, 'gamma': 2, 'N': 5, 'Opt': 'Adam', 'Reg': 0}, 'ComplEx': {'D': 500, 'LR': 0.1, 'B': 1000, 'Ep': 50, 'Opt': 'Adagrad', 'Reg': 0.05}, 'ConvE': {'D': 200, 'LR': 0.003, 'B': 128, 'Ep': 50, 'Decay': 0.995, 'epsilon': 0.1, 'Drop': {'in': 0.2, 'h': 0.3, 'feat': 0.2}}, 'coef': {'k_h': 0.13, 'k_t': 0.017, 'k': 0.51, 'g_h': -0.064, 'g_t': -0.011}}, 'YAGO3-10': {'TransE': {'D': 200, 'LR': 0.0001, 'B': 2048, 'Ep': 100, 'gamma': 5, 'N': 5, 'Opt': 'Adam', 'Reg': 50}, 'ComplEx': {'D': 1000, 'LR': 0.1, 'B': 1000, 'Ep': 50, 'Opt': 'Adagrad', 'Reg': 0.005}, 'ConvE': {'D': 200, 'LR': 0.003, 'B': 128, 'Ep': 20, 'Decay': 0.995, 'epsilon': 0.1, 'Drop': {'in': 0.2, 'h': 0.3, 'feat': 0.2}}, 'coef': {'k_h': 0.2, 'k_t': 0.0014, 'k': 0.76, 'g_h': -0.011, 'g_t': -0.011}}}
-{'MOF-3000': {'tail_restrain': {'hasColor': 'M0->C0', 'hasHabit': 'M0->H0', 'hasPaper': 'M0->P0', 'hasJournal': 'M0->J0', 'hasAuthor': 'M0->A0', 'hasKernel': 'M0,P1,B0->K1,K2,K3', 'subKernel': 'K2,K3->K1,K2', 'hasBond': 'M0,P1->B0', 'hasSolvent': 'M0->ref', 'hasLinker': 'M0->ref', 'hasMetal': 'M0->ref', 'hasOperation': 'M0->O0', 'hasMethod': 'M0->M1'}, 'TransE': {'D': 50, 'LR': 0.0002, 'B': 4096, 'Ep': 200, 'gamma': 2, 'N': 5, 'Opt': 'Adam', 'Reg': 0}, 'ComplEx': {'D': 500, 'LR': 0.1, 'B': 2000, 'Ep': 50, 'Opt': 'Adagrad', 'Reg': 0.05}, 'ConvE': {'D': 200, 'LR': 0.003, 'B': 256, 'Ep': 50, 'Decay': 0.995, 'epsilon': 0.1, 'Drop': {'in': 0.2, 'h': 0.3, 'feat': 0.2}}, 'coef': {'k_h': 0.0425, 'k_t': 0.000841, 'k': 1.33, 'g_h': -0.0269, 'g_t': -0.0001}}, 'FB15k-237': {'TransE': {'D': 50, 'LR': 0.0004, 'B': 2048, 'Ep': 100, 'gamma': 5, 'N': 15, 'Opt': 'Adam', 'Reg': 1}, 'ComplEx': {'D': 1000, 'LR': 0.1, 'B': 1000, 'Ep': 50, 'Opt': 'Adagrad', 'Reg': 0.05}, 'ConvE': {'D': 200, 'LR': 0.003, 'B': 128, 'Ep': 50, 'Decay': 0.995, 'epsilon': 0.1, 'Drop': {'in': 0.2, 'h': 0.3, 'feat': 0.2}}, 'coef': {'k_h': 0.186, 'k_t': 0.0248, 'k': 3.6, 'g_h': -0.0251, 'g_t': -0.0309}}, 'WN18': {'TransE': {'D': 50, 'LR': 0.0002, 'B': 2048, 'Ep': 200, 'gamma': 2, 'N': 5, 'Opt': 'Adam', 'Reg': 0}, 'ComplEx': {'D': 500, 'LR': 0.1, 'B': 1000, 'Ep': 50, 'Opt': 'Adagrad', 'Reg': 0.05}, 'ConvE': {'D': 200, 'LR': 0.003, 'B': 128, 'Ep': 50, 'Decay': 0.995, 'epsilon': 0.1, 'Drop': {'in': 0.2, 'h': 0.3, 'feat': 0.2}}, 'coef': {'k_h': 0.804, 'k_t': 0.0639, 'k': 5.66, 'g_h': -0.00115, 'g_t': -0.0888}}, 'YAGO3-10': {'TransE': {'D': 200, 'LR': 0.0001, 'B': 2048, 'Ep': 100, 'gamma': 5, 'N': 5, 'Opt': 'Adam', 'Reg': 50}, 'ComplEx': {'D': 1000, 'LR': 0.1, 'B': 1000, 'Ep': 50, 'Opt': 'Adagrad', 'Reg': 0.005}, 'ConvE': {'D': 200, 'LR': 0.003, 'B': 128, 'Ep': 20, 'Decay': 0.995, 'epsilon': 0.1, 'Drop': {'in': 0.2, 'h': 0.3, 'feat': 0.2}}, 'coef': {'k_h': 0.0731, 'k_t': 0.0116, 'k': 1.54, 'g_h': -0.0001, 'g_t': -0.0187}}}
-'''

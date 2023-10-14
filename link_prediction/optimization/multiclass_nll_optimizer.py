@@ -65,7 +65,6 @@ class MultiClassNLLOptimizer(Optimizer):
         training_samples = torch.from_numpy(training_samples).cuda()
 
         # at the beginning of the epoch, shuffle all samples randomly
-        # if self.tail_restrain is None:
         actual_samples = training_samples[torch.randperm(training_samples.shape[0]), :]
         loss = nn.CrossEntropyLoss(reduction='mean')
 

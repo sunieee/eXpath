@@ -3,6 +3,7 @@ from link_prediction.evaluation.evaluation import Evaluator
 from link_prediction.models.model import Model
 import torch
 import numpy as np
+import time
 
 
 class Optimizer:
@@ -30,6 +31,7 @@ class Optimizer:
           patience: int = -1,
           type='tail'):
 
+        t = time.time()
         training_samples = np.vstack((train_samples, 
                                       self.model.dataset.invert_samples(train_samples)))
         batch_size = min(self.batch_size, len(training_samples))
